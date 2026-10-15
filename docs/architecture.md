@@ -28,12 +28,16 @@ internal/faketb/      recording focus.TB — lets focus test its own messages
 internal/fakesource/  in-memory capture.Source, so the CLI tests run offline
 pkg/focus/
   focus.go            TB, Value coercion, panic guard, Encode
-  options.go          ignore and normalize rules, path matching
+  options.go          ignore and normalize options
+  ignore_rules.go     ignore path matching: wildcards, globs, case-insensitive
   message.go          failure-message rendering        ← the product
   equal.go            structural equality assertions   ← seam: new assertions
   fields.go           envelope field assertions
-  results.go          result-code assertions
+  results.go          transaction result-code assertions
+  result_codes.go     per-operation result-code assertions
   soroban.go          events, return values
+  simulation.go       simulated resource budget assertions
+  fees.go             consumed and refundable fee assertions
   require/            Fatalf mirrors of everything above
 pkg/golden/           golden files, -focus.update
 pkg/capture/          Source interface, RPC impl, Verify  ← seam: new sources
@@ -107,8 +111,18 @@ differs in sequence number, signatures and time bounds every run.
 
 Patterns match `lens.Change.Path`, the dotted path lens already reports
 (`V1.Tx.Operations[0].Body.PaymentOp.Amount`). Because lens does the
-traversal, focus only has to *filter a list*, which is why `options.go` is
-small.
+traversal, focus only has to *filter a list*, which keeps `ignore_rules.go`
+small. The pattern language is deliberately forgiving, since an ignore
+pattern that does not match is worse than useless:
+
+- `*` matches one segment, `**` matches any number of segments, and an index
+  can be wildcarded (`Operations[*]`);
+- within a segment, `*`, `?` and character classes (`[abc]`, `[!abc]`) work
+  like globs;
+- matching is case-insensitive, so patterns can be written the way the field
+  reads (`operations[*].sourceaccount`);
+- a pattern is anchored to the tail of a path as well as its whole, so
+  `operations[*].sourceaccount` does not need the `V1.Tx.` prefix.
 
 Two rules that exist for trust rather than function:
 
@@ -197,6 +211,8 @@ violated:
 
 - failure messages name the changed path, show enriched values, and disclose
   ignored paths (`TestAssertEnvelopeEqualFailureMessage`);
+- ignore patterns accept globs, case-insensitive names and tail-anchored
+  paths (`TestIgnorePathsGlobAndTailMatching`);
 - a stale ignore pattern is reported (`TestStaleIgnorePatternIsReported`);
 - no assertion panics on hostile input (`TestAssertionsNeverPanic`);
 - golden files are line-oriented and carry real field names

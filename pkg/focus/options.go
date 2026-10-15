@@ -1,8 +1,6 @@
 package focus
 
 import (
-	"strings"
-
 	"github.com/stellar-optics/stellar-xdr-lens/pkg/lens"
 	lensformat "github.com/stellar-optics/stellar-xdr-lens/pkg/lens/format"
 )
@@ -44,11 +42,13 @@ func newConfig(opts ...Option) *config {
 //
 // A "*" segment matches exactly one path segment, and a "**" segment matches
 // any number of segments at any depth. An index may also be wildcarded, as in
-// "Operations[*]".
+// "Operations[*]". Within a segment, "*", "?" and character classes work like
+// globs. Matching is case-insensitive, and a pattern is anchored to the tail
+// of a path as well as its whole, so none of these need a "V1.Tx." prefix:
 //
-// So "**.Signatures" ignores signatures wherever they appear, and
-// "V1.Tx.Operations[*].SourceAccount" ignores the per-operation source on
-// every operation.
+//	focus.IgnorePaths("**.Signatures")                  // signatures at any depth
+//	focus.IgnorePaths("operations[*].sourceaccount")    // per-operation source
+//	focus.IgnorePaths("V1.Tx.Operations[*].SourceAccount")
 //
 // Ignored paths are always named in the failure output. A silently discarded
 // difference is how an assertion library stops being trustworthy.
@@ -189,68 +189,4 @@ func (c *config) unusedIgnores(changes []lens.Change) []string {
 		}
 	}
 	return unused
-}
-
-// matchPath reports whether a path matches a pattern.
-//
-// Segments are split on ".", and an indexed segment such as "Operations[0]"
-// is matched either whole or by its name with a "[*]" index wildcard. "*"
-// matches one segment; "**" matches any number, so it can appear anywhere
-// rather than only at the end.
-func matchPath(pattern, path string) bool {
-	return matchSegments(strings.Split(pattern, "."), strings.Split(path, "."))
-}
-
-func matchSegments(pat, seg []string) bool {
-	switch {
-	case len(pat) == 0:
-		return len(seg) == 0
-	case pat[0] == "**":
-		// Match zero or more segments, trying the shortest first.
-		for i := 0; i <= len(seg); i++ {
-			if matchSegments(pat[1:], seg[i:]) {
-				return true
-			}
-		}
-		return false
-	case len(seg) == 0:
-		return false
-	case segmentMatches(pat[0], seg[0]):
-		return matchSegments(pat[1:], seg[1:])
-	default:
-		return false
-	}
-}
-
-// segmentMatches compares one pattern segment with one path segment,
-// understanding "*" and index wildcards like "Operations[*]".
-func segmentMatches(pattern, segment string) bool {
-	if pattern == "*" || pattern == segment {
-		return true
-	}
-
-	pName, pIdx, pHasIdx := splitIndex(pattern)
-	sName, sIdx, sHasIdx := splitIndex(segment)
-
-	if pName != "*" && pName != sName {
-		return false
-	}
-	// A bare name in the pattern matches an indexed segment, so
-	// "**.Signatures" also covers "Signatures[0]".
-	if !pHasIdx {
-		return true
-	}
-	if !sHasIdx {
-		return false
-	}
-	return pIdx == "*" || pIdx == sIdx
-}
-
-// splitIndex separates "Operations[0]" into "Operations" and "0".
-func splitIndex(s string) (name, index string, hasIndex bool) {
-	open := strings.IndexByte(s, '[')
-	if open < 0 || !strings.HasSuffix(s, "]") {
-		return s, "", false
-	}
-	return s[:open], s[open+1 : len(s)-1], true
 }
