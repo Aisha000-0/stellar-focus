@@ -44,8 +44,14 @@ type globalFlags struct {
 }
 
 // Execute builds and runs the root command.
-func Execute(args []string, stdout, stderr io.Writer) error {
+//
+// extra commands are added to the root before execution: cmd/focus passes
+// `focus assert` (cmd/focus/interactive.go), which keeps the interactive
+// assertion generator beside main without moving fixtures — capture and
+// verify — out of this package.
+func Execute(args []string, stdout, stderr io.Writer, extra ...*cobra.Command) error {
 	root := newRootCmd(stdout, stderr)
+	root.AddCommand(extra...)
 	root.SetArgs(args)
 	return root.Execute()
 }
@@ -66,7 +72,10 @@ manage the fixtures those assertions run against.`,
   focus capture tx 2b2e276a… --out testdata/
 
   # Check that stored fixtures still match the chain
-  focus verify testdata/`,
+  focus verify testdata/
+
+  # Generate assertions for a transaction you already have
+  focus assert AAAA… --all`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {

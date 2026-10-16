@@ -39,6 +39,16 @@ Working and tested:
   (`SafeExec`/`SafeCall` in `pkg/focus/safe_exec.go`)
 - Colourized terminal output highlighting the mismatched field
   (`pkg/focus/terminal.go`, opt-in via `WithColor("always")`)
+- Assertion adapters for other test ecosystems (`pkg/focus/adapters.go`):
+  `Check` and the `Err*` wrappers turn any focus assertion into an error
+  testify's `assert`/`require` (or gocheck) can report with the same
+  descriptive diff, and the `Matcher` built-ins satisfy gomock's matcher
+  interface structurally — no assertion or mocking framework enters the
+  dependency graph to use them
+- `focus assert`, a terminal assistant that decodes a transaction and
+  interactively generates the focus assertions describing it as paste-ready
+  Go (`cmd/focus/interactive.go`), with `--all` for scripts, prompts kept
+  off stdout, and an offline path end to end
 
 Known limits, stated plainly:
 
