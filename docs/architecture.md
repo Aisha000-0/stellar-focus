@@ -42,6 +42,7 @@ pkg/focus/
   results.go          transaction result-code assertions
   result_codes.go     per-operation result-code assertions
   soroban.go          events, return values
+  diagnostic_order.go diagnostic stream order and timelines
   simulation.go       simulated resource budget assertions
   fees.go             consumed and refundable fee assertions
   require/            Fatalf mirrors of everything above
@@ -154,6 +155,48 @@ Two rules that exist for trust rather than function:
   passing comparison. A stale pattern is a test silently weakening; the moment
   it stops matching is the only moment anyone would notice.
 
+## Diagnostic event order and timelines
+
+A Soroban transaction's meta carries a *diagnostic* stream alongside the events
+the contract chose to emit: the frames the host opened and closed (`fn_call`,
+`fn_return`), the lines the contract logged, and the events of calls that
+failed — which survive nowhere else. `diagnostic_order.go` asserts on that
+stream, and on the two things about it that can be checked: the order of the
+events, and the ledger the stream belongs to.
+
+**Order is the assertion.** The stream is the host's account of what the call
+did as it did it, so the right events in the wrong order describe a different
+program. `AssertDiagnosticEventOrder` matches the wanted events as a
+subsequence: each is looked for at or after the position the previous one was
+found at, so listing every event pins every position and listing two pins only
+their relative order. A failure names the wanted event that went unmatched,
+where the search had reached, and — the case worth catching — that the same
+event is present earlier in the stream, which is what a swap looks like.
+
+**A diagnostic event has no timestamp.** Its XDR is a bool and a contract
+event; there is no wall clock in it. The protocol's only time coordinate is the
+ledger the transaction was applied in, so that is what
+`AssertDiagnosticEventTimeline` checks, together with the close time that gives
+the ledger its place in the chain. Both are *passed in* rather than looked up:
+reading a clock or asking a node would make the assertion neither deterministic
+nor offline, and `focus capture` already records exactly these two values as
+fixture provenance (`golden.Provenance.Captured`).
+
+The ledger is read from the meta rather than taken on trust. A transaction
+writes the entries it changes during the ledger it executes in, so their
+`LastModifiedLedgerSeq` is that ledger — and the *newest* pin is the one that
+answers the question, because an entry restored out of the Soroban archival
+state can keep an older last-modified ledger. A meta that pins no ledger, like
+an empty stream, is reported as unplaceable rather than quietly passing a check
+it was never able to make.
+
+Reading the stream is one seam, `diagnosticStream`: it resolves the value
+through the same `coerce` every assertion uses, walks it with the SDK's
+`GetDiagnosticEvents` behind `guard`, and decorates each event with its index,
+call depth and a pre-rendered description. Pre-rendering is deliberate — the
+description is built while the value is known to be well-formed, so printing a
+failure never calls a generated accessor on a value that could panic.
+
 ## Golden format
 
 ```json
@@ -250,4 +293,9 @@ violated:
   plain message (`TestTerminalAssertionOutputViaFakeTB`);
 - panics become ordinary failures with a bug-report prompt (`TestSafeExec*`);
 - every `Assert*` has a `Fatalf` mirror with a matching signature
-  (`TestAuditPassesOnRepo`).
+  (`TestAuditPassesOnRepo`);
+- diagnostic streams are matched in order, with an absence and a swap named
+  differently (`TestAssertDiagnosticEventOrderMessages`);
+- a diagnostic stream is pinned to the ledger its meta pins, and a stream that
+  cannot be placed is reported rather than passed
+  (`TestAssertDiagnosticEventTimelineMessages`).

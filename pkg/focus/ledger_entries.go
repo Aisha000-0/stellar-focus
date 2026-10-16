@@ -205,6 +205,14 @@ func metaChanges(m *xdr.TransactionMeta) []xdr.LedgerEntryChange {
 			}
 			out = append(out, m.V3.TxChangesAfter...)
 		}
+	case 4:
+		if m.V4 != nil {
+			out = append(out, m.V4.TxChangesBefore...)
+			for _, op := range m.V4.Operations {
+				out = append(out, op.Changes...)
+			}
+			out = append(out, m.V4.TxChangesAfter...)
+		}
 	}
 	return out
 }

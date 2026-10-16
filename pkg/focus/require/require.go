@@ -250,6 +250,20 @@ func ContractTrapped(t focus.TB, result focus.Value) {
 	focus.AssertContractTrapped(fatal(t), result)
 }
 
+// DiagnosticEventOrder is focus.AssertDiagnosticEventOrder, stopping the test
+// on failure.
+func DiagnosticEventOrder(t focus.TB, meta focus.Value, want []focus.DiagnosticEventMatch) {
+	t.Helper()
+	focus.AssertDiagnosticEventOrder(fatal(t), meta, want)
+}
+
+// DiagnosticEventTimeline is focus.AssertDiagnosticEventTimeline, stopping the
+// test on failure.
+func DiagnosticEventTimeline(t focus.TB, meta focus.Value, want focus.DiagnosticTimeline) {
+	t.Helper()
+	focus.AssertDiagnosticEventTimeline(fatal(t), meta, want)
+}
+
 // EntryCreated is focus.AssertEntryCreated, stopping the test on failure.
 func EntryCreated(t focus.TB, meta, key focus.Value) {
 	t.Helper()
