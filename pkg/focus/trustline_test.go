@@ -1,0 +1,235 @@
+package focus_test
+
+import (
+	"encoding/hex"
+	"strings"
+	"testing"
+
+	"github.com/stellar/go-stellar-sdk/xdr"
+
+	"github.com/stellar-optics/stellar-focus/internal/faketb"
+	"github.com/stellar-optics/stellar-focus/pkg/focus"
+)
+
+func TestAssertTrustlineModified(t *testing.T) {
+	t.Parallel()
+
+	before := trustlineEntryValue(t, testDest, "USDC", 100, 1000)
+	after := trustlineEntryValue(t, testDest, "USDC", 100, 2000)
+	meta := metaV2(t, []xdr.LedgerEntryChange{stateChange(before), updatedChange(after)})
+
+	tests := []struct {
+		name    string
+		account focus.Value
+		asset   focus.Value
+	}{
+		{"strkey and canonical asset", testDest, usdcAsset},
+		{"muxed account", mustMuxed(t, testDest), usdcAsset},
+		{"xdr trustline asset", testDest, trustLineAsset(t, "USDC")},
+		{"xdr asset", testDest, mustCreditAsset(t, "USDC")},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			tb := faketb.New()
+			if !focus.AssertTrustlineModified(tb, meta, tc.account, tc.asset, 2000) {
+				t.Errorf("assertion failed unexpectedly:\n%s", tb.Output())
+			}
+		})
+	}
+
+	t.Run("a balance-only change keeps the limit", func(t *testing.T) {
+		t.Parallel()
+
+		drained := trustlineEntryValue(t, testDest, "USDC", 0, 1000)
+		paid := trustlineEntryValue(t, testDest, "USDC", 100, 1000)
+		tb := faketb.New()
+		if !focus.AssertTrustlineModified(tb,
+			metaV2(t, []xdr.LedgerEntryChange{stateChange(drained), updatedChange(paid)}),
+			testDest, usdcAsset, 1000) {
+			t.Errorf("assertion failed unexpectedly:\n%s", tb.Output())
+		}
+	})
+
+	t.Run("creation counts as a modification", func(t *testing.T) {
+		t.Parallel()
+
+		created := trustlineEntryValue(t, testDest, "USDC", 0, 5000)
+		tb := faketb.New()
+		if !focus.AssertTrustlineModified(tb,
+			metaV2(t, []xdr.LedgerEntryChange{createdChange(created)}),
+			testDest, usdcAsset, 5000) {
+			t.Errorf("assertion failed unexpectedly:\n%s", tb.Output())
+		}
+	})
+
+	t.Run("two changes take the last limit", func(t *testing.T) {
+		t.Parallel()
+
+		raised := trustlineEntryValue(t, testDest, "USDC", 100, 2000)
+		final := trustlineEntryValue(t, testDest, "USDC", 100, 3000)
+		tb := faketb.New()
+		if !focus.AssertTrustlineModified(tb, metaV2(t,
+			[]xdr.LedgerEntryChange{stateChange(before), updatedChange(raised)},
+			[]xdr.LedgerEntryChange{updatedChange(final)}),
+			testDest, usdcAsset, 3000) {
+			t.Errorf("assertion failed unexpectedly:\n%s", tb.Output())
+		}
+	})
+
+	t.Run("wrong limit", func(t *testing.T) {
+		t.Parallel()
+
+		tb := faketb.New()
+		if focus.AssertTrustlineModified(tb, meta, testDest, usdcAsset, 3000) {
+			t.Fatal("assertion passed with the wrong limit")
+		}
+		msg, err := tb.Message()
+		if err != nil {
+			t.Fatalf("%v", err)
+		}
+		for _, want := range []string{
+			"AssertTrustlineModified: trustline " + usdcAsset + " on account GAPB7…WYXZ",
+			"has limit 2000 (0.0002000), want 3000 (0.0003000)",
+			"limit 1000 (0.0001000) → 2000 (0.0002000)",
+		} {
+			if !strings.Contains(msg, want) {
+				t.Errorf("message does not contain %q:\n%s", want, msg)
+			}
+		}
+	})
+}
+
+func TestAssertTrustlineModifiedFailures(t *testing.T) {
+	t.Parallel()
+
+	before := trustlineEntryValue(t, testDest, "USDC", 100, 1000)
+	after := trustlineEntryValue(t, testDest, "USDC", 150, 1000)
+
+	t.Run("untouched trustline names what did happen", func(t *testing.T) {
+		t.Parallel()
+
+		tb := faketb.New()
+		if focus.AssertTrustlineModified(tb,
+			metaV2(t, []xdr.LedgerEntryChange{stateChange(before), updatedChange(after)}),
+			testDest, eurAsset, 1000) {
+			t.Fatal("assertion passed for an untouched trustline")
+		}
+		msg, err := tb.Message()
+		if err != nil {
+			t.Fatalf("%v", err)
+		}
+		for _, want := range []string{
+			"did not modify trustline " + eurAsset + " on account GAPB7…WYXZ",
+			"trustline " + usdcAsset + " on GAPB7…WYXZ",
+		} {
+			if !strings.Contains(msg, want) {
+				t.Errorf("message does not contain %q:\n%s", want, msg)
+			}
+		}
+	})
+
+	t.Run("native asset is rejected with an alternative", func(t *testing.T) {
+		t.Parallel()
+
+		tb := faketb.New()
+		if focus.AssertTrustlineModified(tb,
+			metaV2(t, []xdr.LedgerEntryChange{updatedChange(after)}),
+			testDest, "native", 1000) {
+			t.Fatal("assertion passed for the native asset")
+		}
+		msg, err := tb.Message()
+		if err != nil {
+			t.Fatalf("%v", err)
+		}
+		if !strings.Contains(msg, "the native asset has no trustline") ||
+			!strings.Contains(msg, "use AssertBalanceChanged") {
+			t.Errorf("message does not explain the mistake:\n%s", msg)
+		}
+	})
+
+	t.Run("invalid account", func(t *testing.T) {
+		t.Parallel()
+
+		tb := faketb.New()
+		if focus.AssertTrustlineModified(tb, metaV2(t), "nope", usdcAsset, 1000) {
+			t.Fatal("assertion passed with an invalid account")
+		}
+		msg, err := tb.Message()
+		if err != nil {
+			t.Fatalf("%v", err)
+		}
+		if !strings.Contains(msg, "account could not be read as an account") {
+			t.Errorf("message does not name the invalid input:\n%s", msg)
+		}
+	})
+}
+
+// TestAssertTrustlineModifiedPoolShare covers the pool share form, which has
+// no string canonical form in the protocol and so is addressed by its id.
+func TestAssertTrustlineModifiedPoolShare(t *testing.T) {
+	t.Parallel()
+
+	var poolID xdr.PoolId
+	copy(poolID[:], "pool-id")
+	address := "pool:" + hex.EncodeToString(poolID[:])
+
+	poolEntry := func(balance, limit int64) xdr.LedgerEntry {
+		return xdr.LedgerEntry{
+			LastModifiedLedgerSeq: 42,
+			Data: xdr.LedgerEntryData{
+				Type: xdr.LedgerEntryTypeTrustline,
+				TrustLine: &xdr.TrustLineEntry{
+					AccountId: mustAccountID(t, testDest),
+					Asset: xdr.TrustLineAsset{
+						Type:            xdr.AssetTypeAssetTypePoolShare,
+						LiquidityPoolId: &poolID,
+					},
+					Balance: xdr.Int64(balance),
+					Limit:   xdr.Int64(limit),
+				},
+			},
+		}
+	}
+
+	meta := metaV2(t, []xdr.LedgerEntryChange{stateChange(poolEntry(0, 1000)), updatedChange(poolEntry(0, 2000))})
+
+	t.Run("by pool id string", func(t *testing.T) {
+		t.Parallel()
+
+		tb := faketb.New()
+		if !focus.AssertTrustlineModified(tb, meta, testDest, address, 2000) {
+			t.Errorf("assertion failed unexpectedly:\n%s", tb.Output())
+		}
+	})
+
+	t.Run("by xdr trustline asset", func(t *testing.T) {
+		t.Parallel()
+
+		tb := faketb.New()
+		asset := xdr.TrustLineAsset{Type: xdr.AssetTypeAssetTypePoolShare, LiquidityPoolId: &poolID}
+		if !focus.AssertTrustlineModified(tb, meta, testDest, asset, 2000) {
+			t.Errorf("assertion failed unexpectedly:\n%s", tb.Output())
+		}
+	})
+
+	t.Run("another pool is not matched", func(t *testing.T) {
+		t.Parallel()
+
+		var other xdr.PoolId
+		copy(other[:], "other-pool")
+		tb := faketb.New()
+		if focus.AssertTrustlineModified(tb, meta, testDest, "pool:"+hex.EncodeToString(other[:]), 2000) {
+			t.Fatal("assertion matched the wrong pool")
+		}
+		msg, err := tb.Message()
+		if err != nil {
+			t.Fatalf("%v", err)
+		}
+		if !strings.Contains(msg, address) {
+			t.Errorf("message does not name the wanted pool:\n%s", msg)
+		}
+	})
+}

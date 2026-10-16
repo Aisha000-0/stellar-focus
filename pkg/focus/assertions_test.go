@@ -405,6 +405,13 @@ func TestAssertionsNeverPanic(t *testing.T) {
 		focus.AssertNoEvents(tb, v)
 		focus.AssertReturnValue(tb, v, "x")
 		focus.AssertContractTrapped(tb, v)
+		focus.AssertEntryCreated(tb, v, v)
+		focus.AssertEntryModified(tb, v, v)
+		focus.AssertEntryDeleted(tb, v, v)
+		focus.AssertBalanceChanged(tb, v, v, v, 0)
+		focus.AssertTrustlineModified(tb, v, v, v, 0)
+		focus.AssertSignersEqual(tb, v, v, nil)
+		focus.AssertThresholdsEqual(tb, v, v, focus.Thresholds{})
 		focus.Events(tb, v)
 		focus.Summarize(tb, v)
 	}

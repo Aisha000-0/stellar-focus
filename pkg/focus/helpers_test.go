@@ -163,3 +163,153 @@ func buildSorobanMeta(t *testing.T, events ...xdr.ContractEvent) string {
 		},
 	})
 }
+
+// accountEntryValue builds a ledger entry holding an account with the given
+// balance, thresholds and signers.
+func accountEntryValue(t *testing.T, addr string, balance int64, th xdr.Thresholds, signers ...xdr.Signer) xdr.LedgerEntry {
+	t.Helper()
+	return xdr.LedgerEntry{
+		LastModifiedLedgerSeq: 42,
+		Data: xdr.LedgerEntryData{
+			Type: xdr.LedgerEntryTypeAccount,
+			Account: &xdr.AccountEntry{
+				AccountId:  mustAccountID(t, addr),
+				Balance:    xdr.Int64(balance),
+				Thresholds: th,
+				Signers:    signers,
+			},
+		},
+	}
+}
+
+// trustLineAsset builds a credit trustline asset with the test issuer.
+func trustLineAsset(t *testing.T, code string) xdr.TrustLineAsset {
+	t.Helper()
+	var asset xdr.Asset
+	if err := asset.SetCredit(code, mustAccountID(t, testIssuer)); err != nil {
+		t.Fatalf("building asset %s: %v", code, err)
+	}
+	return asset.ToTrustLineAsset()
+}
+
+// trustlineEntryValue builds a ledger entry holding a trustline.
+func trustlineEntryValue(t *testing.T, addr, code string, balance, limit int64) xdr.LedgerEntry {
+	t.Helper()
+	return xdr.LedgerEntry{
+		LastModifiedLedgerSeq: 42,
+		Data: xdr.LedgerEntryData{
+			Type: xdr.LedgerEntryTypeTrustline,
+			TrustLine: &xdr.TrustLineEntry{
+				AccountId: mustAccountID(t, addr),
+				Asset:     trustLineAsset(t, code),
+				Balance:   xdr.Int64(balance),
+				Limit:     xdr.Int64(limit),
+			},
+		},
+	}
+}
+
+func ledgerKeyOf(t *testing.T, entry xdr.LedgerEntry) xdr.LedgerKey {
+	t.Helper()
+	key, err := entry.LedgerKey()
+	if err != nil {
+		t.Fatalf("deriving a ledger key: %v", err)
+	}
+	return key
+}
+
+// signerValue builds one account signer.
+func signerValue(t *testing.T, addr string, weight uint32) xdr.Signer {
+	t.Helper()
+	return xdr.Signer{Key: xdr.MustSigner(addr), Weight: xdr.Uint32(weight)}
+}
+
+func stateChange(entry xdr.LedgerEntry) xdr.LedgerEntryChange {
+	return xdr.LedgerEntryChange{Type: xdr.LedgerEntryChangeTypeLedgerEntryState, State: &entry}
+}
+
+func createdChange(entry xdr.LedgerEntry) xdr.LedgerEntryChange {
+	return xdr.LedgerEntryChange{Type: xdr.LedgerEntryChangeTypeLedgerEntryCreated, Created: &entry}
+}
+
+func updatedChange(entry xdr.LedgerEntry) xdr.LedgerEntryChange {
+	return xdr.LedgerEntryChange{Type: xdr.LedgerEntryChangeTypeLedgerEntryUpdated, Updated: &entry}
+}
+
+func restoredChange(entry xdr.LedgerEntry) xdr.LedgerEntryChange {
+	return xdr.LedgerEntryChange{Type: xdr.LedgerEntryChangeTypeLedgerEntryRestored, Restored: &entry}
+}
+
+func removedChange(key xdr.LedgerKey) xdr.LedgerEntryChange {
+	return xdr.LedgerEntryChange{Type: xdr.LedgerEntryChangeTypeLedgerEntryRemoved, Removed: &key}
+}
+
+// metaV2 wraps per-operation changes in a version 2 transaction meta.
+func metaV2(t *testing.T, ops ...[]xdr.LedgerEntryChange) string {
+	t.Helper()
+	return metaV2WithTx(t, nil, nil, ops...)
+}
+
+// metaV2WithTx wraps transaction-level and per-operation changes in a version
+// 2 transaction meta, the shape a fee and a sequence bump arrive in.
+func metaV2WithTx(t *testing.T, before, after []xdr.LedgerEntryChange, ops ...[]xdr.LedgerEntryChange) string {
+	t.Helper()
+
+	operations := make([]xdr.OperationMeta, 0, len(ops))
+	for _, changes := range ops {
+		operations = append(operations, xdr.OperationMeta{Changes: changes})
+	}
+	return mustMarshal(t, xdr.TransactionMeta{
+		V: 2,
+		V2: &xdr.TransactionMetaV2{
+			TxChangesBefore: before,
+			Operations:      operations,
+			TxChangesAfter:  after,
+		},
+	})
+}
+
+// metaV0 wraps per-operation changes in a version 0 transaction meta.
+func metaV0(t *testing.T, ops ...[]xdr.LedgerEntryChange) string {
+	t.Helper()
+
+	operations := make([]xdr.OperationMeta, 0, len(ops))
+	for _, changes := range ops {
+		operations = append(operations, xdr.OperationMeta{Changes: changes})
+	}
+	return mustMarshal(t, xdr.TransactionMeta{V: 0, Operations: &operations})
+}
+
+// metaV1 wraps transaction-level and per-operation changes in a version 1
+// transaction meta.
+func metaV1(t *testing.T, txChanges []xdr.LedgerEntryChange, ops ...[]xdr.LedgerEntryChange) string {
+	t.Helper()
+
+	operations := make([]xdr.OperationMeta, 0, len(ops))
+	for _, changes := range ops {
+		operations = append(operations, xdr.OperationMeta{Changes: changes})
+	}
+	return mustMarshal(t, xdr.TransactionMeta{
+		V:  1,
+		V1: &xdr.TransactionMetaV1{TxChanges: txChanges, Operations: operations},
+	})
+}
+
+// metaV3WithTx wraps transaction-level and per-operation changes in a version
+// 3 (Soroban) transaction meta.
+func metaV3WithTx(t *testing.T, before, after []xdr.LedgerEntryChange, ops ...[]xdr.LedgerEntryChange) string {
+	t.Helper()
+
+	operations := make([]xdr.OperationMeta, 0, len(ops))
+	for _, changes := range ops {
+		operations = append(operations, xdr.OperationMeta{Changes: changes})
+	}
+	return mustMarshal(t, xdr.TransactionMeta{
+		V: 3,
+		V3: &xdr.TransactionMetaV3{
+			TxChangesBefore: before,
+			Operations:      operations,
+			TxChangesAfter:  after,
+		},
+	})
+}

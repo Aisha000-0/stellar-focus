@@ -98,6 +98,13 @@ func TestEveryMirrorReportsFatally(t *testing.T) {
 		{"EventCount", func(tb *faketb.TB) { require.EventCount(tb, "bad", 1) }},
 		{"ReturnValue", func(tb *faketb.TB) { require.ReturnValue(tb, "bad", "x") }},
 		{"ContractTrapped", func(tb *faketb.TB) { require.ContractTrapped(tb, "bad") }},
+		{"EntryCreated", func(tb *faketb.TB) { require.EntryCreated(tb, "bad", "bad") }},
+		{"EntryModified", func(tb *faketb.TB) { require.EntryModified(tb, "bad", "bad") }},
+		{"EntryDeleted", func(tb *faketb.TB) { require.EntryDeleted(tb, "bad", "bad") }},
+		{"BalanceChanged", func(tb *faketb.TB) { require.BalanceChanged(tb, "bad", "G", "native", 0) }},
+		{"TrustlineModified", func(tb *faketb.TB) { require.TrustlineModified(tb, "bad", "G", "native", 0) }},
+		{"SignersEqual", func(tb *faketb.TB) { require.SignersEqual(tb, "bad", "G", nil) }},
+		{"ThresholdsEqual", func(tb *faketb.TB) { require.ThresholdsEqual(tb, "bad", "G", focus.Thresholds{}) }},
 	}
 
 	for _, tc := range tests {

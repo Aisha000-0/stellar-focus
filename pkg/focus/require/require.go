@@ -160,3 +160,47 @@ func ContractTrapped(t focus.TB, result focus.Value) {
 	t.Helper()
 	focus.AssertContractTrapped(fatal(t), result)
 }
+
+// EntryCreated is focus.AssertEntryCreated, stopping the test on failure.
+func EntryCreated(t focus.TB, meta, key focus.Value) {
+	t.Helper()
+	focus.AssertEntryCreated(fatal(t), meta, key)
+}
+
+// EntryModified is focus.AssertEntryModified, stopping the test on failure.
+func EntryModified(t focus.TB, meta, key focus.Value) {
+	t.Helper()
+	focus.AssertEntryModified(fatal(t), meta, key)
+}
+
+// EntryDeleted is focus.AssertEntryDeleted, stopping the test on failure.
+func EntryDeleted(t focus.TB, meta, key focus.Value) {
+	t.Helper()
+	focus.AssertEntryDeleted(fatal(t), meta, key)
+}
+
+// BalanceChanged is focus.AssertBalanceChanged, stopping the test on failure.
+func BalanceChanged(t focus.TB, meta, account, asset focus.Value, delta int64) {
+	t.Helper()
+	focus.AssertBalanceChanged(fatal(t), meta, account, asset, delta)
+}
+
+// TrustlineModified is focus.AssertTrustlineModified, stopping the test on
+// failure.
+func TrustlineModified(t focus.TB, meta, account, asset focus.Value, expectedLimit int64) {
+	t.Helper()
+	focus.AssertTrustlineModified(fatal(t), meta, account, asset, expectedLimit)
+}
+
+// SignersEqual is focus.AssertSignersEqual, stopping the test on failure.
+func SignersEqual(t focus.TB, meta, account focus.Value, want map[string]uint32) {
+	t.Helper()
+	focus.AssertSignersEqual(fatal(t), meta, account, want)
+}
+
+// ThresholdsEqual is focus.AssertThresholdsEqual, stopping the test on
+// failure.
+func ThresholdsEqual(t focus.TB, meta, account, want focus.Value) {
+	t.Helper()
+	focus.AssertThresholdsEqual(fatal(t), meta, account, want)
+}
