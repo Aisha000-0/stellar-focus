@@ -21,6 +21,9 @@ Working and tested:
   explanation and hint; operation result codes can be checked by short name,
   and an unknown code or an XDR constant name is called out as such
 - Soroban: event matching, event counts, return values, contract traps
+- Soroban diagnostic streams: the order of a contract call's diagnostic events
+  — call frames, logs, and the events of calls that failed — and the ledger the
+  stream was emitted in, with that ledger's close time
 - Soroban simulation resource budgets, from either the transaction's
   `SorobanTransactionData` or a simulate-transaction response
 - Consumed fee ceilings and the refundable resource fee breakdown
@@ -45,6 +48,10 @@ Known limits, stated plainly:
 - **Ledger entry capture is thin.** `focus capture ledger-entry` records the
   entry data but has no convenience for constructing the `LedgerKey` you need
   to pass it.
+- **Diagnostic events carry no per-event timestamp.** The protocol records no
+  wall clock on a diagnostic event, so a stream is placed in time by the ledger
+  it was applied in and that ledger's close time, which a test supplies from
+  capture provenance, rather than by a timestamp on each event.
 - **The library API is not frozen.** Expect breaking changes before v1.0.
 
 ## Near term

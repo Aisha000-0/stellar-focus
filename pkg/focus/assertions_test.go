@@ -3,6 +3,7 @@ package focus_test
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stellar/go-stellar-sdk/xdr"
 
@@ -425,7 +426,13 @@ func TestAssertionsNeverPanic(t *testing.T) {
 		focus.AssertOperationSequence(tb, v, nil)
 		focus.AssertSignaturesPresent(tb, v, "G")
 		focus.AssertSignatureThreshold(tb, v, 1, "G")
+		focus.AssertDiagnosticEventOrder(tb, v, []focus.DiagnosticEventMatch{{Kind: focus.DiagnosticFnCall}})
+		focus.AssertDiagnosticEventTimeline(tb, v, focus.DiagnosticTimeline{
+			Ledger:   3966820,
+			ClosedAt: time.Date(2026, time.August, 5, 12, 0, 0, 0, time.UTC),
+		})
 		focus.Events(tb, v)
+		focus.DiagnosticEvents(tb, v)
 		focus.Summarize(tb, v)
 	}
 }
