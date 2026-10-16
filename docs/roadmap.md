@@ -27,11 +27,15 @@ Working and tested:
 - Ignore and normalize rules — including globs, index wildcards and
   case-insensitive, tail-anchored patterns — with applied ignores disclosed
   and stale ones reported
-- `require` mirrors with `Fatalf` semantics
+- `require` mirrors with `Fatalf` semantics, with 100% parity enforced by an
+  AST audit (`pkg/focus/require/audit.go`)
 - Golden files in reviewable JSON, with `-focus.update`
 - `focus capture` and `focus verify` against a live network
-- Dependency-light library, enforced by test
-- No assertion panics, enforced by test
+- Dependency-light library, enforced by compiled-graph and AST tests
+- No assertion panics, enforced by test via a panic-safe harness
+  (`SafeExec`/`SafeCall` in `pkg/focus/safe_exec.go`)
+- Colourized terminal output highlighting the mismatched field
+  (`pkg/focus/terminal.go`, opt-in via `WithColor("always")`)
 
 Known limits, stated plainly:
 
