@@ -28,6 +28,8 @@ internal/faketb/      recording focus.TB — lets focus test its own messages
 internal/fakesource/  in-memory capture.Source, so the CLI tests run offline
 pkg/focus/
   focus.go            TB, Value coercion, panic guard, Encode
+  safe_exec.go        panic-safe harness: SafeExec, SafeCall, PanicError
+  terminal.go         ANSI colour helpers, field highlighting, TTY detection
   options.go          ignore and normalize options
   ignore_rules.go     ignore path matching: wildcards, globs, case-insensitive
   message.go          failure-message rendering        ← the product
@@ -43,6 +45,7 @@ pkg/focus/
   simulation.go       simulated resource budget assertions
   fees.go             consumed and refundable fee assertions
   require/            Fatalf mirrors of everything above
+  require/audit.go    AST parity audit between focus and require
 pkg/golden/           golden files, -focus.update
 pkg/capture/          Source interface, RPC impl, Verify  ← seam: new sources
 ```
@@ -56,6 +59,8 @@ library never imports.
 
 The permitted dependency set is: the standard library, `stellar/go-stellar-sdk`,
 and `stellar-xdr-lens`. That is enforced by `TestLibraryStaysDependencyLight`
+(compiled graph via `go list -deps`) and by the AST check in
+`pkg/focus/deps_lint_test.go` (import specs, pinpointing file and line)
 rather than left to discipline.
 
 ## The TB seam
@@ -105,8 +110,21 @@ the package.
 
 Every assertion runs its inspection behind `guard`, which converts a panic
 into an ordinary test failure that also asks for a bug report.
+`pkg/focus/safe_exec.go` generalises this as `SafeExec`/`SafeCall` with a
+`PanicError` that unwraps to the original cause for `errors.Is`/`errors.As`.
 `TestAssertionsNeverPanic` feeds nil, empty strings, non-base64, truncated
 payloads, wrong types and mismatched XDR through every exported assertion.
+
+## Terminal output
+
+Colour highlights exactly which field mismatched. `pkg/focus/terminal.go`
+provides the ANSI helpers (`HighlightPath`, `FormatFieldMismatch`,
+`StripANSI`/`ContainsANSI`) and TTY detection (`SupportsColorWriter`,
+`PaletteForWriter`, `ColorEnabled`), matching lens's `ColorPalette` so a
+focus failure and `lens diff` highlight the same way. Test output is
+usually captured, so colour defaults to off via `focus.WithColor("never")`
+and is enabled explicitly with `focus.WithColor("always")`; `auto` honours
+`NO_COLOR` and `TERM=dumb`.
 
 ## Ignore rules
 
@@ -187,10 +205,13 @@ saying so is more useful than a green tick that means nothing.
 2. Take `TB` first, return `bool`, call `t.Helper()`.
 3. Resolve inputs through `resolve` or `summarize` so bad input produces the
    standard message.
-4. Wrap anything that touches generated XDR accessors in `guard`.
+4. Wrap anything that touches generated XDR accessors in `guard` (or
+   `SafeExec`/`SafeCall` for standalone inspection).
 5. Build the failure message from `message.go` helpers, and **write a test
    that asserts on the message text**, not merely that it failed.
-6. Add the mirror in `require/`.
+6. Add the mirror in `require/` and keep `require.Audit` green: every
+   `Assert* bool` needs a same-signature `Fatalf` counterpart
+   (`TestAuditPassesOnRepo` enforces this).
 
 Prefer building on `lens.Explain` over reaching into XDR directly: it means
 the value a test asserts on is the same value `lens explain` prints, so an
@@ -222,4 +243,11 @@ violated:
 - golden files are line-oriented and carry real field names
   (`TestGoldenFileIsReviewable`);
 - captures are deterministic (`TestCaptureIsDeterministic`);
-- the library stays dependency-light (`TestLibraryStaysDependencyLight`).
+- the library stays dependency-light (`TestLibraryStaysDependencyLight` and
+  the AST check `TestLibraryImportsStayLightAST`, which also bans heavy
+  assertion/CLI frameworks);
+- colourised failures highlight the mismatched field and strip cleanly to the
+  plain message (`TestTerminalAssertionOutputViaFakeTB`);
+- panics become ordinary failures with a bug-report prompt (`TestSafeExec*`);
+- every `Assert*` has a `Fatalf` mirror with a matching signature
+  (`TestAuditPassesOnRepo`).
