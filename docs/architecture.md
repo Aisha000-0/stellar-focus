@@ -33,6 +33,10 @@ pkg/focus/
   message.go          failure-message rendering        ← the product
   equal.go            structural equality assertions   ← seam: new assertions
   fields.go           envelope field assertions
+  timebounds.go       time and ledger bound assertions
+  memo.go             memo value assertions
+  op_order.go         operation sequence assertions
+  signatures.go       signer presence and threshold assertions
   results.go          transaction result-code assertions
   result_codes.go     per-operation result-code assertions
   soroban.go          events, return values
