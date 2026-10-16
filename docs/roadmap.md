@@ -11,10 +11,15 @@ Working and tested:
 - Field assertions: source, fee, sequence, memo, operation counts and types,
   signature count, fee-bump
 - Result assertions using Horizon's short codes, with lens's plain-English
-  explanation and hint
+  explanation and hint; operation result codes can be checked by short name,
+  and an unknown code or an XDR constant name is called out as such
 - Soroban: event matching, event counts, return values, contract traps
-- Ignore and normalize rules, with applied ignores disclosed and stale ones
-  reported
+- Soroban simulation resource budgets, from either the transaction's
+  `SorobanTransactionData` or a simulate-transaction response
+- Consumed fee ceilings and the refundable resource fee breakdown
+- Ignore and normalize rules — including globs, index wildcards and
+  case-insensitive, tail-anchored patterns — with applied ignores disclosed
+  and stale ones reported
 - `require` mirrors with `Fatalf` semantics
 - Golden files in reviewable JSON, with `-focus.update`
 - `focus capture` and `focus verify` against a live network
@@ -53,17 +58,6 @@ meta already carries the ledger entry changes; this is mostly a matter of
 designing assertions that read well, which is the same work as everything else
 here.
 
-### A short-code index
-
-`AssertResultCode(t, result, "paymnt_underfunded")` currently fails with a
-confusing message rather than "no such result code", because focus has no way
-to enumerate valid short codes — lens does not export that mapping.
-
-Adding `lens.ReasonByCode(short string) (Reason, bool)` upstream would let
-focus both validate the expectation and explain it, which turns a typo in a
-test from a puzzling failure into an obvious one. Filed as the main upstream
-ask.
-
 ### Horizon as a capture source
 
 `capture.Source` is a small interface and Horizon reaches further back than
@@ -77,12 +71,12 @@ what is missing is a documented way to consume it.
 
 ## Later, and less certain
 
-### Assertion on transaction *simulation*
+### More of the simulation response
 
-Soroban RPC can simulate a transaction before submission. Asserting on the
-simulated result — footprint, resource usage, return value — would let tests
-catch resource regressions without submitting anything. Needs care to stay
-offline-testable.
+Budget assertions cover CPU instructions and the ledger I/O bytes in the
+transaction's footprint. The rest of a simulate-transaction response — the
+footprint entries themselves, the returned auth, the minimum resource fee —
+is still only visible through the decoded value.
 
 ### A `focus diff` command
 

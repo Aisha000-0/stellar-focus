@@ -196,6 +196,60 @@ func TestIgnoreOptionsSuppressDifferences(t *testing.T) {
 	}
 }
 
+// TestIgnorePathsGlobAndTailMatching checks the pattern forms added for
+// structural exclusion rules: embedded globs, case-insensitive matching, and
+// patterns anchored to the tail of a path rather than requiring the full
+// V1.Tx… prefix.
+func TestIgnorePathsGlobAndTailMatching(t *testing.T) {
+	t.Parallel()
+
+	srcA := mustMuxed(t, testSource)
+	srcB := mustMuxed(t, testDest)
+
+	opA := paymentOp(t, 100)
+	opA.SourceAccount = &srcA
+	opB := paymentOp(t, 100)
+	opB.SourceAccount = &srcB
+
+	want := buildEnvelopeSeq(t, 111, opA)
+	got := buildEnvelopeSeq(t, 222, opB)
+
+	// Both envelopes differ in their sequence number and in their
+	// operation source, so a run that suppresses only one still fails.
+	sourcePattern := "operations[*].sourceaccount"
+
+	tests := []struct {
+		name     string
+		patterns []string
+	}{
+		{"lowercase sequence", []string{"v1.tx.seqnum", sourcePattern}},
+		{"tail anchored", []string{"Tx.SeqNum", sourcePattern}},
+		{"embedded glob", []string{"**.Seq*", sourcePattern}},
+		{"glob across the path", []string{"V1.**.SeqNum", sourcePattern}},
+		{"operation source without the prefix", []string{"**.seqnum", sourcePattern}},
+		{"negated index", []string{"**.seqnum", "operations[!1].sourceaccount"}},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			tb := faketb.New()
+			if !focus.AssertEnvelopeEqual(tb, want, got, focus.IgnorePaths(tc.patterns...)) {
+				t.Errorf("difference was not suppressed by %v:\n%s", tc.patterns, tb.Output())
+			}
+		})
+	}
+
+	// A pattern that names the wrong index must not suppress the source
+	// difference, so the comparison still fails.
+	tb := faketb.New()
+	if focus.AssertEnvelopeEqual(tb, want, got,
+		focus.IgnorePaths("**.seqnum", "operations[1].sourceaccount")) {
+		t.Error("a pattern naming the wrong index suppressed a difference")
+	}
+}
+
 // TestStaleIgnorePatternIsReported covers the anti-rot rule: a pattern that
 // matches nothing is reported even when the values are otherwise equal,
 // because a stale ignore is a test quietly weakening.

@@ -120,12 +120,14 @@ differs in its sequence number, signatures and time bounds every run.
 focus.IgnoreVolatile()      // sequence + signatures + time bounds
 focus.IgnoreSequence()
 focus.IgnoreSignatures()
-focus.IgnorePaths("**.Signatures", "V1.Tx.Operations[*].SourceAccount")
+focus.IgnorePaths("**.Signatures", "operations[*].sourceaccount")
 focus.NormalizePath("**.SeqNum", func(v any) any { return v.(int64) / 100 * 100 })
 ```
 
 Patterns match the dotted paths lens reports: `*` is one segment, `**` is any
-depth, and indexes accept `[*]`.
+depth, and indexes accept `[*]`. Within a segment, `*`, `?` and `[abc]`/`[!abc]`
+classes work like globs; matching is case-insensitive and patterns are anchored
+to the tail of a path too, so `operations[*].sourceaccount` needs no prefix.
 
 Two deliberate behaviours:
 

@@ -137,6 +137,33 @@ func OperationSucceeded(t focus.TB, result focus.Value, index int) {
 	focus.AssertOperationSucceeded(fatal(t), result, index)
 }
 
+// OperationResultCode is focus.AssertOperationResultCode, stopping the test on
+// failure.
+func OperationResultCode(t focus.TB, result focus.Value, index int, want string) {
+	t.Helper()
+	focus.AssertOperationResultCode(fatal(t), result, index, want)
+}
+
+// ConsumedFeeWithin is focus.AssertConsumedFeeWithin, stopping the test on
+// failure.
+func ConsumedFeeWithin(t focus.TB, result focus.Value, limit int64) {
+	t.Helper()
+	focus.AssertConsumedFeeWithin(fatal(t), result, limit)
+}
+
+// RefundFeeEqual is focus.AssertRefundFeeEqual, stopping the test on failure.
+func RefundFeeEqual(t focus.TB, meta focus.Value, want int64) {
+	t.Helper()
+	focus.AssertRefundFeeEqual(fatal(t), meta, want)
+}
+
+// SimulationResourcesWithin is focus.AssertSimulationResourcesWithin, stopping
+// the test on failure.
+func SimulationResourcesWithin(t focus.TB, simResponse focus.Value, maxCPU, maxMem uint32) {
+	t.Helper()
+	focus.AssertSimulationResourcesWithin(fatal(t), simResponse, maxCPU, maxMem)
+}
+
 // EventEmitted is focus.AssertEventEmitted, stopping the test on failure.
 func EventEmitted(t focus.TB, meta focus.Value, want focus.Event) {
 	t.Helper()
