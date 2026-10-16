@@ -109,6 +109,21 @@ func TestEveryMirrorReportsFatally(t *testing.T) {
 		{"TrustlineModified", func(tb *faketb.TB) { require.TrustlineModified(tb, "bad", "G", "native", 0) }},
 		{"SignersEqual", func(tb *faketb.TB) { require.SignersEqual(tb, "bad", "G", nil) }},
 		{"ThresholdsEqual", func(tb *faketb.TB) { require.ThresholdsEqual(tb, "bad", "G", focus.Thresholds{}) }},
+		{"TimeboundsValid", func(tb *faketb.TB) { require.TimeboundsValid(tb, env, 1, 2) }},
+		{"LedgerboundsValid", func(tb *faketb.TB) { require.LedgerboundsValid(tb, env, 1, 0) }},
+		{"MemoTextEqual", func(tb *faketb.TB) { require.MemoTextEqual(tb, env, "nope") }},
+		{"MemoIDEqual", func(tb *faketb.TB) { require.MemoIDEqual(tb, env, 7) }},
+		{"MemoHashEqual", func(tb *faketb.TB) { require.MemoHashEqual(tb, env, "00") }},
+		{"MemoReturnEqual", func(tb *faketb.TB) { require.MemoReturnEqual(tb, env, "00") }},
+		{"OperationSequence", func(tb *faketb.TB) {
+			require.OperationSequence(tb, env, []xdr.OperationType{xdr.OperationTypeChangeTrust})
+		}},
+		{"SignaturesPresent", func(tb *faketb.TB) {
+			require.SignaturesPresent(tb, env, "GCJNHFXJEQEY54NPKU4DBMT5WOBJUHMYSFBDAQF4OMTEGJN4BQU7ZST6")
+		}},
+		{"SignatureThreshold", func(tb *faketb.TB) {
+			require.SignatureThreshold(tb, env, 1, "GCJNHFXJEQEY54NPKU4DBMT5WOBJUHMYSFBDAQF4OMTEGJN4BQU7ZST6")
+		}},
 	}
 
 	for _, tc := range tests {
@@ -142,6 +157,8 @@ func TestMirrorsStaySilentOnSuccess(t *testing.T) {
 	require.Sequence(tb, env, 1)
 	require.OperationCount(tb, env, 1)
 	require.OperationTypes(tb, env, "payment")
+	require.OperationSequence(tb, env, []xdr.OperationType{xdr.OperationTypePayment})
+	require.TimeboundsValid(tb, env, 0, 0)
 
 	if tb.Failed() {
 		t.Errorf("a passing assertion reported a failure:\n%s", tb.Output())

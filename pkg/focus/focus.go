@@ -37,6 +37,8 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/stellar/go-stellar-sdk/xdr"
+
 	"github.com/stellar-optics/stellar-xdr-lens/pkg/lens"
 )
 
@@ -145,6 +147,26 @@ func resolve(t TB, assertion, label string, v Value, typeName string) (*lens.Val
 		return nil, false
 	}
 	return decoded, true
+}
+
+// envelopeFrom coerces a transaction envelope and returns both the decoded
+// XDR and the lens value, so an assertion that reads preconditions, memos or
+// signatures works from a single decode.
+//
+// Assertions that only inspect the lens summary go through summarize instead;
+// this is for the ones that need the generated types.
+func envelopeFrom(t TB, assertion string, v Value) (*xdr.TransactionEnvelope, *lens.Value, bool) {
+	t.Helper()
+	decoded, ok := resolve(t, assertion, "envelope", v, "TransactionEnvelope")
+	if !ok {
+		return nil, nil, false
+	}
+	env, ok := decoded.Raw.(*xdr.TransactionEnvelope)
+	if !ok {
+		t.Errorf("%s: value is a %s, want a TransactionEnvelope", assertion, decoded.Type)
+		return nil, nil, false
+	}
+	return env, decoded, true
 }
 
 // guard converts a panic into a test failure.

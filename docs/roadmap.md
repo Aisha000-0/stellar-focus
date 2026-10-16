@@ -10,6 +10,13 @@ Working and tested:
   failure output that names the changed field path
 - Field assertions: source, fee, sequence, memo, operation counts and types,
   signature count, fee-bump
+- Time- and ledger-bound assertions, comparing the window a precondition sets
+  against the window a test expects
+- Memo assertions by value: text, ID, 32-byte hash and return memos
+- Operation-sequence assertions, matching the exact ordered operation types
+- Signer assertions: which keys attached a signature — including pre-auth-tx,
+  hash-x and signed-payload signers, and both signature sets of a fee-bump
+  envelope — plus M-of-N signature thresholds
 - Result assertions using Horizon's short codes, with lens's plain-English
   explanation and hint; operation result codes can be checked by short name,
   and an unknown code or an XDR constant name is called out as such
@@ -34,8 +41,6 @@ Known limits, stated plainly:
 - **Ledger entry capture is thin.** `focus capture ledger-entry` records the
   entry data but has no convenience for constructing the `LedgerKey` you need
   to pass it.
-- **No ledger-change assertions.** You can assert on results and events, but
-  not yet on the ledger entries a transaction created, modified or removed.
 - **The library API is not frozen.** Expect breaking changes before v1.0.
 
 ## Near term
@@ -50,13 +55,6 @@ This belongs in [stellar-xdr-lens](https://github.com/stellar-optics/stellar-xdr
 rather than here, since `lens decode` and `prism events` would benefit
 identically — but focus is where the ergonomic payoff is largest, so it is
 worth pushing for.
-
-### Ledger-change assertions
-
-`AssertEntryCreated`, `AssertEntryModified`, `AssertBalanceChanged`. Transaction
-meta already carries the ledger entry changes; this is mostly a matter of
-designing assertions that read well, which is the same work as everything else
-here.
 
 ### Horizon as a capture source
 

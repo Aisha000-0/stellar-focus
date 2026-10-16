@@ -11,6 +11,8 @@
 package require
 
 import (
+	"github.com/stellar/go-stellar-sdk/xdr"
+
 	"github.com/stellar-optics/stellar-focus/pkg/focus"
 )
 
@@ -82,10 +84,49 @@ func Sequence(t focus.TB, envelope focus.Value, want int64) {
 	focus.AssertSequence(fatal(t), envelope, want)
 }
 
+// TimeboundsValid is focus.AssertTimeboundsValid, stopping the test on
+// failure.
+func TimeboundsValid(t focus.TB, envelope focus.Value, minTime, maxTime int64) {
+	t.Helper()
+	focus.AssertTimeboundsValid(fatal(t), envelope, minTime, maxTime)
+}
+
+// LedgerboundsValid is focus.AssertLedgerboundsValid, stopping the test on
+// failure.
+func LedgerboundsValid(t focus.TB, envelope focus.Value, minLedger, maxLedger uint32) {
+	t.Helper()
+	focus.AssertLedgerboundsValid(fatal(t), envelope, minLedger, maxLedger)
+}
+
 // Memo is focus.AssertMemo, stopping the test on failure.
 func Memo(t focus.TB, envelope focus.Value, want string) {
 	t.Helper()
 	focus.AssertMemo(fatal(t), envelope, want)
+}
+
+// MemoTextEqual is focus.AssertMemoTextEqual, stopping the test on failure.
+func MemoTextEqual(t focus.TB, envelope focus.Value, want string) {
+	t.Helper()
+	focus.AssertMemoTextEqual(fatal(t), envelope, want)
+}
+
+// MemoIDEqual is focus.AssertMemoIDEqual, stopping the test on failure.
+func MemoIDEqual(t focus.TB, envelope focus.Value, want uint64) {
+	t.Helper()
+	focus.AssertMemoIDEqual(fatal(t), envelope, want)
+}
+
+// MemoHashEqual is focus.AssertMemoHashEqual, stopping the test on failure.
+func MemoHashEqual(t focus.TB, envelope focus.Value, want focus.Value) {
+	t.Helper()
+	focus.AssertMemoHashEqual(fatal(t), envelope, want)
+}
+
+// MemoReturnEqual is focus.AssertMemoReturnEqual, stopping the test on
+// failure.
+func MemoReturnEqual(t focus.TB, envelope focus.Value, want focus.Value) {
+	t.Helper()
+	focus.AssertMemoReturnEqual(fatal(t), envelope, want)
 }
 
 // OperationCount is focus.AssertOperationCount, stopping the test on failure.
@@ -100,10 +141,31 @@ func OperationTypes(t focus.TB, envelope focus.Value, want ...string) {
 	focus.AssertOperationTypes(fatal(t), envelope, want...)
 }
 
+// OperationSequence is focus.AssertOperationSequence, stopping the test on
+// failure.
+func OperationSequence(t focus.TB, envelope focus.Value, want []xdr.OperationType) {
+	t.Helper()
+	focus.AssertOperationSequence(fatal(t), envelope, want)
+}
+
 // SignatureCount is focus.AssertSignatureCount, stopping the test on failure.
 func SignatureCount(t focus.TB, envelope focus.Value, want int) {
 	t.Helper()
 	focus.AssertSignatureCount(fatal(t), envelope, want)
+}
+
+// SignaturesPresent is focus.AssertSignaturesPresent, stopping the test on
+// failure.
+func SignaturesPresent(t focus.TB, envelope focus.Value, expectedPubKeys ...focus.Value) {
+	t.Helper()
+	focus.AssertSignaturesPresent(fatal(t), envelope, expectedPubKeys...)
+}
+
+// SignatureThreshold is focus.AssertSignatureThreshold, stopping the test on
+// failure.
+func SignatureThreshold(t focus.TB, envelope focus.Value, threshold int, expectedPubKeys ...focus.Value) {
+	t.Helper()
+	focus.AssertSignatureThreshold(fatal(t), envelope, threshold, expectedPubKeys...)
 }
 
 // Succeeded is focus.AssertSucceeded, stopping the test on failure.

@@ -295,6 +295,74 @@ func metaV1(t *testing.T, txChanges []xdr.LedgerEntryChange, ops ...[]xdr.Ledger
 	})
 }
 
+// precondTime builds a time-only precondition.
+func precondTime(tb *xdr.TimeBounds) xdr.Preconditions {
+	return xdr.Preconditions{Type: xdr.PreconditionTypePrecondTime, TimeBounds: tb}
+}
+
+// precondV2 builds a V2 precondition from the optional bounds, which is where
+// ledger bounds and the minimum sequence number live.
+func precondV2(tb *xdr.TimeBounds, lb *xdr.LedgerBounds) xdr.Preconditions {
+	return xdr.Preconditions{
+		Type: xdr.PreconditionTypePrecondV2,
+		V2:   &xdr.PreconditionsV2{TimeBounds: tb, LedgerBounds: lb},
+	}
+}
+
+// v0EnvelopeValue builds a preconditions-era envelope carrying time bounds in
+// the older TransactionV0 field.
+func v0EnvelopeValue(t *testing.T, tb *xdr.TimeBounds, ops ...xdr.Operation) xdr.TransactionEnvelope {
+	t.Helper()
+
+	aid := mustAccountID(t, testSource)
+	var key xdr.Uint256
+	if aid.Ed25519 == nil {
+		t.Fatal("test source account has no ed25519 key")
+	}
+	key = *aid.Ed25519
+
+	return xdr.TransactionEnvelope{
+		Type: xdr.EnvelopeTypeEnvelopeTypeTxV0,
+		V0: &xdr.TransactionV0Envelope{
+			Tx: xdr.TransactionV0{
+				SourceAccountEd25519: key,
+				Fee:                  xdr.Uint32(100 * len(ops)),
+				SeqNum:               12345,
+				TimeBounds:           tb,
+				Memo:                 xdr.Memo{Type: xdr.MemoTypeMemoNone},
+				Operations:           ops,
+			},
+		},
+	}
+}
+
+// feeBumpEnvelopeValue wraps an envelope's transaction in a fee bump with the
+// given outer and inner signatures.
+func feeBumpEnvelopeValue(
+	t *testing.T, inner xdr.TransactionEnvelope,
+	outerSigs, innerSigs []xdr.DecoratedSignature,
+) xdr.TransactionEnvelope {
+	t.Helper()
+
+	return xdr.TransactionEnvelope{
+		Type: xdr.EnvelopeTypeEnvelopeTypeTxFeeBump,
+		FeeBump: &xdr.FeeBumpTransactionEnvelope{
+			Tx: xdr.FeeBumpTransaction{
+				FeeSource: mustMuxed(t, testDest),
+				Fee:       200,
+				InnerTx: xdr.FeeBumpTransactionInnerTx{
+					Type: xdr.EnvelopeTypeEnvelopeTypeTx,
+					V1: &xdr.TransactionV1Envelope{
+						Tx:         inner.V1.Tx,
+						Signatures: innerSigs,
+					},
+				},
+			},
+			Signatures: outerSigs,
+		},
+	}
+}
+
 // metaV3WithTx wraps transaction-level and per-operation changes in a version
 // 3 (Soroban) transaction meta.
 func metaV3WithTx(t *testing.T, before, after []xdr.LedgerEntryChange, ops ...[]xdr.LedgerEntryChange) string {
