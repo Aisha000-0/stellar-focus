@@ -293,3 +293,28 @@ func ThresholdsEqual(t focus.TB, meta, account, want focus.Value) {
 	t.Helper()
 	focus.AssertThresholdsEqual(fatal(t), meta, account, want)
 }
+
+// FailedOperations is focus.AssertFailedOperations, stopping the test on
+// failure.
+func FailedOperations(t focus.TB, result focus.Value, want ...int) {
+	t.Helper()
+	focus.AssertFailedOperations(fatal(t), result, want...)
+}
+
+// FeeBump is focus.AssertFeeBump, stopping the test on failure.
+func FeeBump(t focus.TB, envelope focus.Value, want bool) {
+	t.Helper()
+	focus.AssertFeeBump(fatal(t), envelope, want)
+}
+
+// NoEvents is focus.AssertNoEvents, stopping the test on failure.
+func NoEvents(t focus.TB, meta focus.Value) {
+	t.Helper()
+	focus.AssertNoEvents(fatal(t), meta)
+}
+
+// OperationType is focus.AssertOperationType, stopping the test on failure.
+func OperationType(t focus.TB, envelope focus.Value, index int, want string) {
+	t.Helper()
+	focus.AssertOperationType(fatal(t), envelope, index, want)
+}
