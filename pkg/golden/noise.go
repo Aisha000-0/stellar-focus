@@ -3,7 +3,22 @@ package golden
 import (
 	"regexp"
 	"strings"
+
+	"github.com/stellar-optics/stellar-focus/pkg/focus"
 )
+
+func noiseSuppressionOptions() []focus.Option {
+	normalize := func(any) any { return "<normalized>" }
+	return []focus.Option{
+		focus.NormalizePath("**.SeqNum", normalize),
+		focus.NormalizePath("**.MinTime", normalize),
+		focus.NormalizePath("**.MaxTime", normalize),
+		focus.NormalizePath("**.LedgerCloseTime", normalize),
+		focus.NormalizePath("**.Timestamp", normalize),
+		focus.NormalizePath("**.CreatedAt", normalize),
+		focus.NormalizePath("**.UpdatedAt", normalize),
+	}
+}
 
 // NormalizeNoise rewrites common dynamic values in a golden payload so fixture
 // comparisons ignore volatile timestamps and sequence numbers while preserving the

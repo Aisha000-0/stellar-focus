@@ -3,6 +3,7 @@ package capture
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -30,8 +31,8 @@ func NewHorizonSource(network, endpoint string, timeout time.Duration) *HorizonS
 	}
 }
 
-func (s *HorizonSource) Name() string { return "horizon" }
-func (s *HorizonSource) Network() string { return s.network }
+func (s *HorizonSource) Name() string     { return "horizon" }
+func (s *HorizonSource) Network() string  { return s.network }
 func (s *HorizonSource) Endpoint() string { return s.endpoint }
 
 // Transaction implements Source by fetching a Horizon transaction record.
@@ -203,5 +204,5 @@ func (s *HorizonSource) get(ctx context.Context, endpoint string) ([]byte, error
 }
 
 func isNotFound(err error) bool {
-	return err != nil && strings.Contains(err.Error(), ErrNotFound.Error())
+	return errors.Is(err, ErrNotFound)
 }
