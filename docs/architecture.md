@@ -215,6 +215,77 @@ store a bare blob.
 `format` is checked on load, so a file written by a future version is rejected
 rather than silently misread.
 
+### Fixtures in JSON, YAML or text
+
+That data has three spellings, and `pkg/golden/serializer.go` is the seam
+between them. Everything above the serializer — `Assert`, a failing diff,
+`focus verify` — works with a `*golden.Fixture` and never learns which file it
+came from:
+
+```go
+type Serializer interface {
+	Format() Format
+	Marshal(f *Fixture) ([]byte, error)
+	Unmarshal(data []byte) (*Fixture, error)
+}
+```
+
+| Format | Written as | Read as |
+| --- | --- | --- |
+| `json` | indented JSON, the default | `encoding/json` |
+| `yaml` | block-style YAML | the subset below |
+| `text` | one `dotted.path: value` leaf per line | dotted paths unflattened |
+
+The text form uses the vocabulary lens already names a changed field with, so a
+fixture reads like the failure message that produced it and
+grep `Operations\[0\]` finds an operation without a parser in the loop. YAML is
+the same tree in the shape a human hand-edits.
+
+**The format is a property of the file name, not of the package.** `Save` and
+`Load` take the extension (`FormatForPath`), `WithFormat` sets it for a `Golden`
+and moves the default suffix with it, and `LoadAs`/`SaveAs` take it explicitly.
+An unrecognised extension is read as JSON, so every fixture written before
+these formats existed still loads.
+
+Two properties hold for all three, and are tested as such:
+
+- **Deterministic.** No clock, no network, and no map iteration order reaches
+the output — decoded keys are sorted, and the fixture's own fields are written
+in a fixed order — so the same fixture always produces the same bytes.
+- **Normalized.** `Marshal` runs its output through `NormalizeWhitespace`:
+  line endings become `\n`, trailing horizontal whitespace goes, blank-line
+  runs collapse, and the file ends with exactly one newline. A CRLF checkout or
+  a stray trailing space cannot become diff noise, and the readers normalize
+  what they read for the same reason.
+
+### Why the YAML is a documented subset
+
+`pkg/golden` is imported into other people's test suites, and the permitted
+dependency set is the standard library, the Stellar SDK and lens — enforced by
+`TestLibraryStaysDependencyLight`. A YAML library would be inherited by every
+consumer, so the YAML here is written and read by this package instead.
+
+The supported subset is exactly what the writer emits — block mappings, block
+sequences, single-line scalars, and the flow forms `{}` and `[]` — plus the
+compact `- key: value` entry a hand-writer is likely to type, which is expanded
+to the block form before parsing. Anchors, aliases, tags, block scalars and
+multi-document streams are not read. Reading is deliberately strict: a tab
+indent, an indentation jump, a duplicate key, or a path that is both a value
+and a container is an error naming the line, because a fixture that silently
+lost a field is a test that silently stopped checking something.
+
+The emitted subset is ordinary YAML, not a private dialect: it loads with any
+standard parser, which is what makes it worth hand-editing.
+
+Scalars are written bare when that is unambiguous and as a JSON string literal
+otherwise. Quoting is what keeps a round trip lossless: `testnet` stays a
+string, `58002` stays a number, and the string `"58002"` is quoted so it does
+not come back as one. Numbers are carried as `json.Number` end to end, so an
+int64 amount is never rounded through a `float64` on the way.
+
+Adding a fourth format is one file and one entry in `SerializerFor`; nothing in
+`pkg/focus`, the CLI, or the comparison path changes.
+
 ## Capture and verify
 
 `capture.Source` is the only thing in the repository that opens a network
@@ -285,6 +356,16 @@ violated:
 - no assertion panics on hostile input (`TestAssertionsNeverPanic`);
 - golden files are line-oriented and carry real field names
   (`TestGoldenFileIsReviewable`);
+- every fixture format round-trips losslessly — including a large int64, a
+  string that looks like a number, empty containers and a key containing a path
+  separator — produces identical bytes on every run, and comes out already
+  whitespace-normalized (`TestEveryFormatRoundTrips`,
+  `TestEveryFormatRoundTripsAwkwardValues`, `TestEveryFormatIsDeterministic`,
+  `TestOutputIsWhitespaceNormalized`);
+- a `Golden` configured for YAML or text still fails with the field-level diff
+  and the re-record instruction, and `-focus.update` records all three formats
+  (`TestGoldenUsesTheConfiguredFormat`,
+  `TestGoldenUpdateWritesEveryFormat`);
 - captures are deterministic (`TestCaptureIsDeterministic`);
 - the library stays dependency-light (`TestLibraryStaysDependencyLight` and
   the AST check `TestLibraryImportsStayLightAST`, which also bans heavy
