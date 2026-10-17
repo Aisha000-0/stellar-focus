@@ -26,6 +26,9 @@ Working and tested:
   stream was emitted in, with that ledger's close time
 - Soroban simulation resource budgets, from either the transaction's
   `SorobanTransactionData` or a simulate-transaction response
+- Contract deployment state: the storage a `__constructor` writes — instance,
+  persistent and temporary — and the owner it binds, read from the deployment
+  transaction's meta with no network call
 - Consumed fee ceilings and the refundable resource fee breakdown
 - Ignore and normalize rules — including globs, index wildcards and
   case-insensitive, tail-anchored patterns — with applied ignores disclosed

@@ -2,6 +2,7 @@ package focus
 
 import (
 	"fmt"
+	"math/big"
 	"strings"
 
 	"github.com/stellar/go-stellar-sdk/strkey"
@@ -383,8 +384,112 @@ func describeScVal(v xdr.ScVal) string {
 				return shorten(s)
 			}
 		}
+	case xdr.ScValTypeScvU128:
+		if n, ok := v.GetU128(); ok {
+			return fmt.Sprintf("u128(%s)", u128String(n))
+		}
+	case xdr.ScValTypeScvI128:
+		if n, ok := v.GetI128(); ok {
+			return fmt.Sprintf("i128(%s)", i128String(n))
+		}
+	case xdr.ScValTypeScvBytes:
+		if b, ok := v.GetBytes(); ok {
+			return describeBytes(b)
+		}
+	case xdr.ScValTypeScvVec:
+		if vec, ok := v.GetVec(); ok {
+			return describeScVec(vec)
+		}
+	case xdr.ScValTypeScvMap:
+		if m, ok := v.GetMap(); ok {
+			return describeScMap(m)
+		}
+	case xdr.ScValTypeScvContractInstance:
+		return "contract instance"
+	case xdr.ScValTypeScvLedgerKeyContractInstance:
+		return "contract instance key"
+	case xdr.ScValTypeScvLedgerKeyNonce:
+		return "nonce key"
+	case xdr.ScValTypeScvError:
+		if e, ok := v.GetError(); ok {
+			return "error(" + strings.TrimPrefix(e.Type.String(), "ScErrorTypeSce") + ")"
+		}
+	case xdr.ScValTypeScvTimepoint:
+		if t, ok := v.GetTimepoint(); ok {
+			return fmt.Sprintf("timepoint(%d)", t)
+		}
+	case xdr.ScValTypeScvDuration:
+		if d, ok := v.GetDuration(); ok {
+			return fmt.Sprintf("duration(%d)", d)
+		}
 	}
 	return strings.TrimPrefix(v.Type.String(), "ScValTypeScv")
+}
+
+// describeScVec renders a vector compactly, truncating long ones so a large
+// payload does not dominate a failure message.
+func describeScVec(vec *xdr.ScVec) string {
+	if vec == nil || len(*vec) == 0 {
+		return "vec[]"
+	}
+	const maxShown = 3
+	parts := make([]string, 0, maxShown+1)
+	for i, element := range *vec {
+		if i == maxShown {
+			parts = append(parts, fmt.Sprintf("… +%d", len(*vec)-maxShown))
+			break
+		}
+		parts = append(parts, describeScVal(element))
+	}
+	return "vec[" + strings.Join(parts, ", ") + "]"
+}
+
+// describeScMap renders a map compactly, truncating long ones.
+func describeScMap(m *xdr.ScMap) string {
+	if m == nil || len(*m) == 0 {
+		return "map{}"
+	}
+	const maxShown = 3
+	parts := make([]string, 0, maxShown+1)
+	for i, entry := range *m {
+		if i == maxShown {
+			parts = append(parts, fmt.Sprintf("… +%d", len(*m)-maxShown))
+			break
+		}
+		parts = append(parts, fmt.Sprintf("%s: %s",
+			describeScVal(entry.Key), describeScVal(entry.Val)))
+	}
+	return "map{" + strings.Join(parts, ", ") + "}"
+}
+
+// describeBytes renders a byte array as hex, truncated so a large payload does
+// not dominate a failure message.
+func describeBytes(b xdr.ScBytes) string {
+	const maxShown = 8
+	if len(b) == 0 {
+		return "bytes(0x)"
+	}
+	if len(b) > maxShown {
+		return fmt.Sprintf("bytes(0x%x…, %d bytes)", b[:maxShown], len(b))
+	}
+	return fmt.Sprintf("bytes(0x%x)", b)
+}
+
+// u128String renders the two-word unsigned representation as one decimal.
+func u128String(parts xdr.UInt128Parts) string {
+	value := new(big.Int).SetUint64(uint64(parts.Hi))
+	value.Lsh(value, 64)
+	value.Or(value, new(big.Int).SetUint64(uint64(parts.Lo)))
+	return value.String()
+}
+
+// i128String renders the two-word signed representation as one decimal. Lsh on
+// the signed high word sign-extends, so adding the low word gives the value.
+func i128String(parts xdr.Int128Parts) string {
+	value := new(big.Int).SetInt64(int64(parts.Hi))
+	value.Lsh(value, 64)
+	value.Add(value, new(big.Int).SetUint64(uint64(parts.Lo)))
+	return value.String()
 }
 
 // shorten abbreviates a strkey for inline display, matching how lens and
