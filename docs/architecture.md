@@ -42,6 +42,7 @@ pkg/focus/
   results.go          transaction result-code assertions
   result_codes.go     per-operation result-code assertions
   soroban.go          events, return values
+  constructor.go      deployment state and owner binding (__constructor)
   diagnostic_order.go diagnostic stream order and timelines
   simulation.go       simulated resource budget assertions
   fees.go             consumed and refundable fee assertions
@@ -196,6 +197,45 @@ through the same `coerce` every assertion uses, walks it with the SDK's
 call depth and a pre-rendered description. Pre-rendering is deliberate — the
 description is built while the value is known to be well-formed, so printing a
 failure never calls a generated accessor on a value that could panic.
+
+## Contract deployment state
+
+A contract's `__constructor` runs once, inside the deployment transaction that
+creates it, so everything it writes is in that transaction's meta. `constructor.go`
+reads it there: no RPC call, no simulator, no clock. That is what makes a
+deployment test able to say *which* state the contract was initialised with,
+rather than only that `create_contract` succeeded.
+
+Two places can hold that state, and both are read:
+
+- the contract's **instance entry**, whose `ScContractInstance.Storage` map is
+  instance storage — where a constructor that uses `env.storage().instance()`
+  puts an owner or an admin;
+- the separate **ContractData entries** a constructor creates for persistent and
+  temporary storage.
+
+Reading is done through the same flattened ledger changes the entry assertions
+use (`ledgerChanges`), so both see the transaction the same way. Later writes to
+a key replace earlier ones, so the state read is the state after the transaction,
+and `state` changes — the value *before* an update — are skipped rather than
+mistaken for something the transaction wrote.
+
+The assertion requires the instance entry. It is the protocol's marker that this
+transaction deployed the contract, so without it the state being asserted on
+belongs to some other transaction, and saying so is more useful than reporting
+every expected entry as missing.
+
+Storage keys are matched against the key's symbol or string value, ignoring
+case: a `#[contracttype] enum DataKey` variant serialises as `Owner` while the
+field it backs reads `owner`, and a test should not have to know which one the
+contract happened to use. An owner, though, must be an address — a value that is
+not one is reported as the wrong *kind* of value, with the address forms named,
+because that is almost always a constructor storing the wrong thing.
+
+A failure shows each difference, the value wanted, the value found and where it
+was found (`instance storage`, or the durability that holds it), then lists the
+whole state the constructor wrote. The listing is the point: it is what turns
+"owner is wrong" into "owner is wrong, and here is what else it wrote".
 
 ## Golden format
 
@@ -379,4 +419,13 @@ violated:
   differently (`TestAssertDiagnosticEventOrderMessages`);
 - a diagnostic stream is pinned to the ledger its meta pins, and a stream that
   cannot be placed is reported rather than passed
-  (`TestAssertDiagnosticEventTimelineMessages`).
+  (`TestAssertDiagnosticEventTimelineMessages`);
+- constructor state is read from instance, persistent and temporary storage,
+  with a missing entry, a wrong value and a wrong owner each named, and the
+  state written listed underneath (`TestAssertConstructorStatePasses`,
+  `TestAssertConstructorStateFailureMessages`);
+- an owner binding must be an address, and one that is not is reported as the
+  wrong kind of value (`TestAssertContractOwnerFailureMessages`);
+- a meta that never deployed the contract — a classic meta, a wrong contract id,
+  no instance entry — is reported as such rather than as a missing entry
+  (`TestAssertConstructorStateDiagnosesBadInput`).

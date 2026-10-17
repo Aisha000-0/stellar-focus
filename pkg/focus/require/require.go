@@ -250,6 +250,19 @@ func ContractTrapped(t focus.TB, result focus.Value) {
 	focus.AssertContractTrapped(fatal(t), result)
 }
 
+// ConstructorState is focus.AssertConstructorState, stopping the test on
+// failure.
+func ConstructorState(t focus.TB, meta focus.Value, want focus.ConstructorState) {
+	t.Helper()
+	focus.AssertConstructorState(fatal(t), meta, want)
+}
+
+// ContractOwner is focus.AssertContractOwner, stopping the test on failure.
+func ContractOwner(t focus.TB, meta focus.Value, contractID, wantOwner string) {
+	t.Helper()
+	focus.AssertContractOwner(fatal(t), meta, contractID, wantOwner)
+}
+
 // DiagnosticEventOrder is focus.AssertDiagnosticEventOrder, stopping the test
 // on failure.
 func DiagnosticEventOrder(t focus.TB, meta focus.Value, want []focus.DiagnosticEventMatch) {

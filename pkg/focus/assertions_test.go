@@ -431,6 +431,12 @@ func TestAssertionsNeverPanic(t *testing.T) {
 			Ledger:   3966820,
 			ClosedAt: time.Date(2026, time.August, 5, 12, 0, 0, 0, time.UTC),
 		})
+		focus.AssertConstructorState(tb, v, focus.ConstructorState{
+			ContractID: "CAAAA",
+			Owner:      testSource,
+			Entries:    map[string]any{"owner": v},
+		})
+		focus.AssertContractOwner(tb, v, "CAAAA", testSource)
 		focus.Events(tb, v)
 		focus.DiagnosticEvents(tb, v)
 		focus.Summarize(tb, v)
