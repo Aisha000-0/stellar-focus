@@ -33,6 +33,9 @@ Working and tested:
 - `require` mirrors with `Fatalf` semantics, with 100% parity enforced by an
   AST audit (`pkg/focus/require/audit.go`)
 - Golden files in reviewable JSON, with `-focus.update`
+- Fixtures in JSON, YAML or plain text — chosen by file extension, or with
+  `WithFormat` — all three lossless, deterministic and whitespace-normalized,
+  with the text form using lens's dotted-path vocabulary
 - `focus capture` and `focus verify` against a live network
 - Dependency-light library, enforced by compiled-graph and AST tests
 - No assertion panics, enforced by test via a panic-safe harness
@@ -45,6 +48,12 @@ Known limits, stated plainly:
 - **No contract-spec decoding.** Soroban values render as the XDR wire shape,
   so an event payload shows its structure rather than the contract's field
   names. This is the biggest gap and it is shared with the sibling projects.
+- **YAML is a subset.** Write and read by `pkg/golden` itself, since a YAML
+  library would be inherited by everyone who imports these test helpers. Block
+  mappings, block sequences, single-line scalars and `{}`/`[]` are supported;
+  anchors, aliases, tags, block scalars and multi-document streams are rejected
+  with a message naming the line. JSON remains the default and the format every
+  existing fixture is written in.
 - **Ledger entry capture is thin.** `focus capture ledger-entry` records the
   entry data but has no convenience for constructing the `LedgerKey` you need
   to pass it.
@@ -86,6 +95,15 @@ Budget assertions cover CPU instructions and the ledger I/O bytes in the
 transaction's footprint. The rest of a simulate-transaction response — the
 footprint entries themselves, the returned auth, the minimum resource fee —
 is still only visible through the decoded value.
+
+### A wider YAML subset
+
+The YAML reader is deliberately strict: it reads what the writer emits, and
+rejects the rest with a message naming the line rather than guessing. Flow
+style (`[a, b]`), block scalars (`|`, `>`) and multi-document streams are the
+constructs most likely to appear in a hand-written fixture, and each is a
+small, self-contained addition once there is a fixture that needs it —
+rejecting is the safe default until then.
 
 ### A `focus diff` command
 
