@@ -12,6 +12,11 @@
 //	go test ./... -focus.update
 //
 // The flag is namespaced so it never collides with a project's own -update.
+//
+// Fixtures may be stored gzip-compressed (a .golden.json.gz suffix writes
+// them that way), and reads are transparent about it; content is compared
+// after line-ending normalization, so a checkout on Windows asserts the same
+// as one on Linux.
 package golden
 
 import (
@@ -154,6 +159,13 @@ func (g *Golden) Assert(name string, actual focus.Value) bool {
 	}
 
 	want, err := Load(path)
+	if errors.Is(err, os.ErrNotExist) {
+		// A compressed twin counts: a repository that gzipped its fixtures
+		// should not have to reconfigure every assertion to keep passing.
+		if gz, gzErr := Load(path + GzipSuffix); gzErr == nil {
+			path, want, err = path+GzipSuffix, gz, nil
+		}
+	}
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			g.t.Errorf("golden: %s does not exist yet.\n"+
@@ -217,9 +229,10 @@ func Build(v focus.Value, typeName, description string, provenance *Provenance) 
 	return fixture, nil
 }
 
-// Load reads a golden file.
+// Load reads a golden file, transparently decompressing it and normalizing
+// its line endings first.
 func Load(path string) (*Fixture, error) {
-	raw, err := os.ReadFile(path)
+	raw, err := ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
@@ -239,15 +252,12 @@ func Load(path string) (*Fixture, error) {
 	return &f, nil
 }
 
-// Save writes a golden file, creating the directory if needed.
+// Save writes a golden file, creating the directory if needed and storing it
+// gzip-compressed when the path ends in .gz.
 //
 // Output is indented and newline-terminated so that a diff is line-oriented
 // and reviewable, which is the reason this format exists at all.
 func Save(path string, f *Fixture) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return fmt.Errorf("creating %s: %w", filepath.Dir(path), err)
-	}
-
 	var buf bytes.Buffer
 	enc := json.NewEncoder(&buf)
 	enc.SetIndent("", "  ")
@@ -255,11 +265,7 @@ func Save(path string, f *Fixture) error {
 	if err := enc.Encode(f); err != nil {
 		return fmt.Errorf("encoding fixture: %w", err)
 	}
-
-	if err := os.WriteFile(path, buf.Bytes(), 0o600); err != nil {
-		return fmt.Errorf("writing %s: %w", path, err)
-	}
-	return nil
+	return WriteFile(path, buf.Bytes())
 }
 
 // NewProvenance records a capture at the given time.

@@ -215,6 +215,16 @@ store a bare blob.
 `format` is checked on load, so a file written by a future version is rejected
 rather than silently misread.
 
+Golden directories are tooling-friendly without changing the format:
+`*.golden.json.gz` is transparently compressed on save and decompressed on
+load (plain and compressed files coexist in one directory), a line-ending
+normalizer lets a CRLF checkout read as the file a Unix checkout wrote, and
+`focus.sha256` records a SHA-256 manifest of every fixture in the directory so
+CI can prove none of them were edited by hand. `focus golden resolve` settles
+stale files interactively: it walks proposed updates, prints the same
+field-level diff a failing assertion prints, and writes only the proposals
+accepted.
+
 ## Capture and verify
 
 `capture.Source` is the only thing in the repository that opens a network

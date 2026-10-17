@@ -33,6 +33,11 @@ Working and tested:
 - `require` mirrors with `Fatalf` semantics, with 100% parity enforced by an
   AST audit (`pkg/focus/require/audit.go`)
 - Golden files in reviewable JSON, with `-focus.update`
+- Golden tooling: transparent gzip compression for `*.golden.json.gz`, a
+  SHA-256 manifest (`focus.sha256`) to detect any edit of a golden directory,
+  and line-ending normalization so CRLF checkouts assert as on Unix
+- `focus golden resolve` to settle stale golden files interactively, showing
+  the same field-level diff a failing assertion shows before writing
 - `focus capture` and `focus verify` against a live network
 - Dependency-light library, enforced by compiled-graph and AST tests
 - No assertion panics, enforced by test via a panic-safe harness

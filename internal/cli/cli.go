@@ -43,9 +43,12 @@ type globalFlags struct {
 	color   string
 }
 
-// Execute builds and runs the root command.
-func Execute(args []string, stdout, stderr io.Writer) error {
+// Execute builds and runs the root command. Extra commands are added to the
+// root — the seam through which cmd/focus attaches commands implemented in
+// package main, since a main package cannot be imported into this one.
+func Execute(args []string, stdout, stderr io.Writer, extra ...*cobra.Command) error {
 	root := newRootCmd(stdout, stderr)
+	root.AddCommand(extra...)
 	root.SetArgs(args)
 	return root.Execute()
 }
