@@ -29,6 +29,15 @@ Working and tested:
 - Contract deployment state: the storage a `__constructor` writes — instance,
   persistent and temporary — and the owner it binds, read from the deployment
   transaction's meta with no network call
+- Clawback assertions: the clawback operations themselves, balance forfeiture
+  proven from the meta — including a full clawback that removes the trustline
+  — and claimable balance revocation by id, key or entry
+- Sponsorship assertions: who pays an entry's reserve, read from the entry's
+  `SponsoringID` across the meta's changes, with the transition it made —
+  established, transferred, revoked — named on failure
+- Inflation and fee-pool assertions: the payouts an inflation operation made,
+  per-account totals, and the fee pool before, after and between ledger
+  headers, all from supplied results and headers with no network call
 - Consumed fee ceilings and the refundable resource fee breakdown
 - Ignore and normalize rules — including globs, index wildcards and
   case-insensitive, tail-anchored patterns — with applied ignores disclosed
@@ -43,8 +52,10 @@ Working and tested:
 - Dependency-light library, enforced by compiled-graph and AST tests
 - No assertion panics, enforced by test via a panic-safe harness
   (`SafeExec`/`SafeCall` in `pkg/focus/safe_exec.go`)
-- Colourized terminal output highlighting the mismatched field
-  (`pkg/focus/terminal.go`, opt-in via `WithColor("always")`)
+- Colourized terminal output highlighting the mismatched field, with the
+  structural diff rendering each change side by side as labelled `want`/`got`
+  values that strip cleanly to plain text (`pkg/focus/terminal.go`,
+  `pkg/focus/message.go`; opt-in via `WithColor("always")`)
 
 Known limits, stated plainly:
 

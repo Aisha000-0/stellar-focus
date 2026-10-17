@@ -41,6 +41,11 @@ pkg/focus/
   signatures.go       signer presence and threshold assertions
   results.go          transaction result-code assertions
   result_codes.go     per-operation result-code assertions
+  ledger_entries.go   entry created/modified/deleted assertions
+  balance.go          balance changes and asset resolution
+  clawback.go         clawback operations, forfeiture and revocation
+  sponsorship.go      who pays an entry's reserve
+  inflation.go        inflation payouts and ledger fee-pool assertions
   soroban.go          events, return values
   constructor.go      deployment state and owner binding (__constructor)
   diagnostic_order.go diagnostic stream order and timelines
@@ -127,6 +132,18 @@ focus failure and `lens diff` highlight the same way. Test output is
 usually captured, so colour defaults to off via `focus.WithColor("never")`
 and is enabled explicitly with `focus.WithColor("always")`; `auto` honours
 `NO_COLOR` and `TERM=dumb`.
+
+The structural diff itself is rendered by `message.go`, not by lens's
+formatter. Each change gets the field path on its own line and then one
+labelled line per side — `want │ …` beside `got  │ …` — because a reader
+asking "which of these was I expecting?" is not answered by a `-`/`+` sign.
+The labels sit in a fixed column so several changes line up, and the colours
+follow the palette (`want` in the removal colour, `got` in the addition
+colour) so stripping the escapes leaves the plain message byte for byte.
+A value present on one side only renders a single labelled side rather than
+an empty pair, and the elision notice for `WithMaxChanges` stays a single
+line. If the walker reports a change with no path — the two sides are
+different kinds of value — the path column reads `(value)`.
 
 ## Ignore rules
 
@@ -236,6 +253,46 @@ A failure shows each difference, the value wanted, the value found and where it
 was found (`instance storage`, or the durability that holds it), then lists the
 whole state the constructor wrote. The listing is the point: it is what turns
 "owner is wrong" into "owner is wrong, and here is what else it wrote".
+
+## Revocation, sponsorship and fee-pool history
+
+Three subjects share a property: the operation is not the evidence, the meta
+or the result is.
+
+**Clawback** (`clawback.go`) forfeits an issued asset, either from a
+trustline or by revoking a claimable balance before it is claimed. The
+operation assertions (`AssertClawbackOp`,
+`AssertClawbackClaimableBalanceOp`) read the envelope, accepting a fee-bump
+wrapper and a V0 envelope, and rejecting the native asset because it cannot
+be clawed back. The meta assertions (`AssertBalanceForfeited`,
+`AssertClaimableBalanceRevoked`) are the ones that prove the value moved: a
+full clawback removes the trustline, and a revocation removes the balance
+entry, so the assertion reads the flattened ledger changes and reports a
+balance that merely shrank as exactly that. Balance ids are accepted as the
+id, a `LedgerKey` or a `LedgerEntry` for the balance, or any of those as
+base64, bytes or a decoded `*lens.Value`, since a test usually holds the
+entry the create transaction produced.
+
+**Sponsorship** (`sponsorship.go`) is recorded on the entry itself, in
+`LedgerEntryExtensionV1.SponsoringID`, and a revoke-sponsorship operation
+can transfer, establish or revoke depending on the entry's prior state.
+`AssertEntrySponsoredBy` therefore walks the entry's changes, reads the
+state before the first write and the entry's final value, and names the
+transition it found — established, transferred, revoked or unchanged — so
+"sponsored by the wrong account" and "not sponsored at all" never read the
+same. A removed entry carries no sponsorship to inspect and is reported as
+such, and the sponsor must be a real account address rather than an empty
+string that could quietly match an unsponsored entry.
+
+**Inflation and the fee pool** (`inflation.go`) are protocol history: the
+payouts an inflation operation actually made live in its operation result,
+and the pool they came from lives in the ledger header. Assertions take
+those values directly (`AssertInflationPayouts`, `AssertInflationPaid`,
+`AssertFeePool`, `AssertFeePoolChanged`) rather than fetching a ledger, so
+they are as offline as the rest. The dormant-inflation outcome,
+`InflationResultCodeInflationNotTime`, is treated as "no payouts", which is
+what a suite on a current network sees; a failed transaction or a missing
+inflation operation is reported as such rather than as an empty payout list.
 
 ## Golden format
 
@@ -390,6 +447,24 @@ violated:
 
 - failure messages name the changed path, show enriched values, and disclose
   ignored paths (`TestAssertEnvelopeEqualFailureMessage`);
+- a structural diff renders each change side by side, labelled `want`/`got`,
+  with colour stripping back to the plain message and no line growing past
+  200 characters (`TestFailureMessageSideBySide`,
+  `TestFailureMessageAddedAndRemoved`, `TestFailureMessageColorized`);
+- a clawback is matched by from, asset and amount with every mismatch named,
+  and forfeiture is proven from the meta — including a full clawback that
+  removes the trustline (`TestAssertClawbackOp`,
+  `TestAssertClawbackOpFailureMessage`, `TestAssertBalanceForfeited`);
+- a revoked claimable balance is matched by id, key or entry, and a balance
+  left present is reported as surviving
+  (`TestAssertClaimableBalanceRevoked`);
+- sponsorship reads the entry's extension and names the transition —
+  established, transferred, revoked — rather than only the final sponsor
+  (`TestAssertEntrySponsoredBy`, `TestAssertEntrySponsoredByFailureMessages`);
+- inflation payouts are compared in order, the not-time outcome means no
+  payouts, and a fee-pool change is signed and order-checked
+  (`TestAssertInflationPayouts`, `TestAssertInflationPaid`,
+  `TestAssertFeePool`, `TestAssertFeePoolChanged`);
 - ignore patterns accept globs, case-insensitive names and tail-anchored
   paths (`TestIgnorePathsGlobAndTailMatching`);
 - a stale ignore pattern is reported (`TestStaleIgnorePatternIsReported`);
