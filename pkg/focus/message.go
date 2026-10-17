@@ -1,7 +1,6 @@
 package focus
 
 import (
-	"bytes"
 	"encoding"
 	"encoding/base64"
 	"fmt"
@@ -37,7 +36,7 @@ func diffMessage(assertion string, want, got *lens.Value, changes []lens.Change,
 	}
 
 	b.WriteString("\n")
-	b.WriteString(renderChanges(want, got, changes, c))
+	b.WriteString(renderChanges(changes, c))
 	b.WriteString("\n")
 
 	// The raw payloads come last, truncated, so they are available for
@@ -48,9 +47,18 @@ func diffMessage(assertion string, want, got *lens.Value, changes []lens.Change,
 	return b.String()
 }
 
-// renderChanges prints the diff using lens's own formatter, so a failing test
-// shows exactly what `lens diff` shows for the same pair.
-func renderChanges(want, got *lens.Value, changes []lens.Change, c *config) string {
+// renderChanges prints each difference as a labelled, side-by-side pair: the
+// field path on its own line, then the value wanted and the value found, each
+// labelled in its own column. It replaces the old "- before / + after" form
+// because "which of these was I expecting?" is the question a failing diff
+// has to answer, and a sign does not answer it.
+//
+// The layout stays aligned whether the value is present or not, and the
+// colouring uses lens's palette — want in the removal colour, got in the
+// addition colour — so a focus failure and `lens diff` agree. With colour off
+// the palette is empty and the plain text is the coloured text minus the
+// escapes.
+func renderChanges(changes []lens.Change, c *config) string {
 	shown := changes
 	var elided int
 	if c.maxChanges > 0 && len(changes) > c.maxChanges {
@@ -58,35 +66,73 @@ func renderChanges(want, got *lens.Value, changes []lens.Change, c *config) stri
 		elided = len(changes) - c.maxChanges
 	}
 
-	result := &lens.DiffResult{
-		LeftType:  want.Type,
-		RightType: got.Type,
-		Changes:   shown,
+	p := c.palette()
+	var b strings.Builder
+	for _, ch := range shown {
+		renderChange(&b, ch, p)
 	}
-
-	var buf bytes.Buffer
-	f := lensformat.NewDiffFormatter(lensformat.WithDiffPalette(c.palette()))
-	if err := f.Format(&buf, result); err != nil {
-		// Falling back keeps a formatter bug from hiding the actual failure.
-		var fallback strings.Builder
-		for _, ch := range shown {
-			fmt.Fprintf(&fallback, "  %s\n", ch.String())
-		}
-		return fallback.String()
-	}
-
-	// lens appends its own one-line summary ("1 changed"), which duplicates
-	// the count already in this message's headline.
-	rendered := strings.TrimRight(buf.String(), "\n")
-	if idx := strings.LastIndex(rendered, "\n\n"); idx > 0 {
-		rendered = rendered[:idx]
-	}
-
-	out := indent(rendered, "  ")
 	if elided > 0 {
-		out += fmt.Sprintf("\n  … and %d more difference(s); raise the limit with focus.WithMaxChanges", elided)
+		fmt.Fprintf(&b, "%s… and %d more difference(s); raise the limit with focus.WithMaxChanges%s\n",
+			p.Dim, elided, p.Reset)
 	}
-	return out + "\n"
+	return b.String()
+}
+
+// renderChange renders one difference: the path with the marker for the kind
+// of change, then one labelled line per side.
+func renderChange(b *strings.Builder, ch lens.Change, p lensformat.Palette) {
+	marker, color := "~", p.Change
+	switch ch.Op {
+	case lens.ChangeAdded:
+		marker, color = "+", p.Add
+	case lens.ChangeRemoved:
+		marker, color = "-", p.Remove
+	}
+	fmt.Fprintf(b, "  %s%s %s%s\n", color, marker, changePath(ch), p.Reset)
+
+	switch ch.Op {
+	case lens.ChangeAdded:
+		writeChangeSide(b, p, "got", p.Add, ch.After, ch.AfterNote)
+	case lens.ChangeRemoved:
+		writeChangeSide(b, p, "want", p.Remove, ch.Before, ch.BeforeNote)
+	default:
+		writeChangeSide(b, p, "want", p.Remove, ch.Before, ch.BeforeNote)
+		writeChangeSide(b, p, "got", p.Add, ch.After, ch.AfterNote)
+	}
+}
+
+// writeChangeSide renders one side of a difference with its label in a column,
+// so the want and got values of every change line up under each other.
+func writeChangeSide(b *strings.Builder, p lensformat.Palette, label, color string, v any, note string) {
+	value, note := renderDiffValue(v, note)
+	fmt.Fprintf(b, "      %s%-4s%s %s│%s %s%s%s",
+		p.Dim, label, p.Reset, p.Dim, p.Reset, color, value, p.Reset)
+	if note != "" {
+		fmt.Fprintf(b, " %s%s%s", p.Dim, note, p.Reset)
+	}
+	b.WriteString("\n")
+}
+
+// renderDiffValue splits a change value into the part shown as the value and
+// the enriched note beside it. A value that is only a note is shown as the
+// note, so a diff never renders an empty cell.
+func renderDiffValue(v any, note string) (string, string) {
+	if v == nil {
+		if note == "" {
+			return "(none)", ""
+		}
+		return note, ""
+	}
+	return fmt.Sprintf("%v", v), note
+}
+
+// changePath names the field a change sits at, standing in for the empty path
+// the walker reports when the two sides are different kinds of value.
+func changePath(ch lens.Change) string {
+	if ch.Path == "" {
+		return "(value)"
+	}
+	return ch.Path
 }
 
 // mismatchMessage renders a simple want/got failure for scalar assertions.

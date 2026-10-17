@@ -345,3 +345,62 @@ func OperationType(t focus.TB, envelope focus.Value, index int, want string) {
 	t.Helper()
 	focus.AssertOperationType(fatal(t), envelope, index, want)
 }
+
+// ClawbackOp is focus.AssertClawbackOp, stopping the test on failure.
+func ClawbackOp(t focus.TB, envelope focus.Value, index int, from, asset focus.Value, amount int64) {
+	t.Helper()
+	focus.AssertClawbackOp(fatal(t), envelope, index, from, asset, amount)
+}
+
+// ClawbackClaimableBalanceOp is focus.AssertClawbackClaimableBalanceOp,
+// stopping the test on failure.
+func ClawbackClaimableBalanceOp(t focus.TB, envelope focus.Value, index int, balanceID focus.Value) {
+	t.Helper()
+	focus.AssertClawbackClaimableBalanceOp(fatal(t), envelope, index, balanceID)
+}
+
+// BalanceForfeited is focus.AssertBalanceForfeited, stopping the test on
+// failure.
+func BalanceForfeited(t focus.TB, meta, account, asset focus.Value, amount int64) {
+	t.Helper()
+	focus.AssertBalanceForfeited(fatal(t), meta, account, asset, amount)
+}
+
+// ClaimableBalanceRevoked is focus.AssertClaimableBalanceRevoked, stopping the
+// test on failure.
+func ClaimableBalanceRevoked(t focus.TB, meta, balanceID focus.Value) {
+	t.Helper()
+	focus.AssertClaimableBalanceRevoked(fatal(t), meta, balanceID)
+}
+
+// EntrySponsoredBy is focus.AssertEntrySponsoredBy, stopping the test on
+// failure.
+func EntrySponsoredBy(t focus.TB, meta, targetEntry, sponsorAccount focus.Value) {
+	t.Helper()
+	focus.AssertEntrySponsoredBy(fatal(t), meta, targetEntry, sponsorAccount)
+}
+
+// InflationPayouts is focus.AssertInflationPayouts, stopping the test on
+// failure.
+func InflationPayouts(t focus.TB, result focus.Value, want []focus.InflationPayout) {
+	t.Helper()
+	focus.AssertInflationPayouts(fatal(t), result, want)
+}
+
+// InflationPaid is focus.AssertInflationPaid, stopping the test on failure.
+func InflationPaid(t focus.TB, result, account focus.Value, amount int64) {
+	t.Helper()
+	focus.AssertInflationPaid(fatal(t), result, account, amount)
+}
+
+// FeePool is focus.AssertFeePool, stopping the test on failure.
+func FeePool(t focus.TB, header focus.Value, want int64) {
+	t.Helper()
+	focus.AssertFeePool(fatal(t), header, want)
+}
+
+// FeePoolChanged is focus.AssertFeePoolChanged, stopping the test on failure.
+func FeePoolChanged(t focus.TB, before, after focus.Value, delta int64) {
+	t.Helper()
+	focus.AssertFeePoolChanged(fatal(t), before, after, delta)
+}
