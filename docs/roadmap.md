@@ -74,6 +74,17 @@ Working and tested:
 - Deterministic replay tests generated straight from captured fixtures: same
   fixture in, byte-identical `_test.go` out, red with a field diff when the
   fixture or a decoder moves (`pkg/capture/codegen.go`)
+- Transaction preflight simulation capture: `simulateTransaction` responses
+  recorded as per-payload fixtures — transaction data with its resource
+  footprint, diagnostic events, authorization-tree nodes and host function
+  returns — with the host's rejection surfaced as `ErrSimulationFailed`
+  (`pkg/capture/simulate.go`)
+- Latest-ledger header capture with the assertable fields decoded from the
+  XDR: protocol version, base fee, base reserve, total coins and sequence
+  (`pkg/capture/ledger_header.go`)
+- Deterministic corrupted-envelope mutator over real captures: a fixed seed
+  and step count always regenerates the same malformed variant, and the
+  report names each corrupted offset (`pkg/capture/mutate.go`)
 - Dependency-light library, enforced by compiled-graph and AST tests
 - No assertion panics, enforced by test via a panic-safe harness
   (`SafeExec`/`SafeCall` in `pkg/focus/safe_exec.go`)
