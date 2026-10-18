@@ -415,6 +415,23 @@ func TestAssertionsNeverPanic(t *testing.T) {
 		focus.AssertEntryDeleted(tb, v, v)
 		focus.AssertBalanceChanged(tb, v, v, v, 0)
 		focus.AssertTrustlineModified(tb, v, v, v, 0)
+		focus.AssertClawbackOp(tb, v, 0, v, v, 1)
+		focus.AssertClawbackClaimableBalanceOp(tb, v, 0, v)
+		focus.AssertBalanceForfeited(tb, v, v, v, 1)
+		focus.AssertClaimableBalanceRevoked(tb, v, v)
+		focus.AssertEntrySponsoredBy(tb, v, v, v)
+		focus.AssertInflationPayouts(tb, v, []focus.InflationPayout{{Destination: v, Amount: 1}})
+		focus.AssertInflationPaid(tb, v, v, 1)
+		focus.AssertFeePool(tb, v, 1)
+		focus.AssertFeePoolChanged(tb, v, v, 1)
+		focus.AssertClaimableBalanceCreated(tb, v, v, 0)
+		focus.AssertAccountDataEqual(tb, v, "k", v)
+		focus.AssertAccountDataEqualFor(tb, v, v, "k", v)
+		focus.AssertAccountDataDeleted(tb, v, "k")
+		focus.AssertLiquidityPoolDeposit(tb, v, v, focus.PoolChange{ReserveA: 1, ReserveB: 1, Shares: 1})
+		focus.AssertLiquidityPoolWithdrawal(tb, v, v, focus.PoolChange{ReserveA: 1, ReserveB: 1, Shares: 1})
+		focus.AssertOfferCreated(tb, v, focus.Offer{Seller: v, Selling: v, Buying: v, Price: v})
+		focus.AssertTradeExecuted(tb, v, focus.Trade{Seller: v, Pool: v, Sold: v, Bought: v})
 		focus.AssertSignersEqual(tb, v, v, nil)
 		focus.AssertThresholdsEqual(tb, v, v, focus.Thresholds{})
 		focus.AssertTimeboundsValid(tb, v, 0, 0)
@@ -431,6 +448,12 @@ func TestAssertionsNeverPanic(t *testing.T) {
 			Ledger:   3966820,
 			ClosedAt: time.Date(2026, time.August, 5, 12, 0, 0, 0, time.UTC),
 		})
+		focus.AssertConstructorState(tb, v, focus.ConstructorState{
+			ContractID: "CAAAA",
+			Owner:      testSource,
+			Entries:    map[string]any{"owner": v},
+		})
+		focus.AssertContractOwner(tb, v, "CAAAA", testSource)
 		focus.Events(tb, v)
 		focus.DiagnosticEvents(tb, v)
 		focus.Summarize(tb, v)

@@ -82,6 +82,7 @@ type Golden struct {
 	t       focus.TB
 	dir     string
 	suffix  string
+	format  Format
 	opts    []focus.Option
 	desc    string
 	typeHnt string
@@ -95,9 +96,20 @@ func WithDir(dir string) Opt {
 	return func(g *Golden) { g.dir = dir }
 }
 
-// WithSuffix sets the file suffix. The default is ".golden.json".
+// WithSuffix sets the file suffix. The default follows the format, so it is
+// ".golden.json" unless WithFormat says otherwise.
 func WithSuffix(s string) Opt {
 	return func(g *Golden) { g.suffix = s }
+}
+
+// WithFormat stores fixtures in the named format instead of JSON, and moves the
+// default suffix with it — ".golden.yaml" for YAML and ".golden.txt" for text —
+// so a name needs no extension. A WithSuffix given after it still wins.
+func WithFormat(f Format) Opt {
+	return func(g *Golden) {
+		g.format = f
+		g.suffix = f.DefaultSuffix()
+	}
 }
 
 // WithOptions applies focus assertion options — ignore and normalize rules —
@@ -119,7 +131,7 @@ func WithType(typeName string) Opt {
 
 // New returns a Golden bound to a test.
 func New(t focus.TB, opts ...Opt) *Golden {
-	g := &Golden{t: t, dir: "testdata", suffix: ".golden.json"}
+	g := &Golden{t: t, dir: "testdata", suffix: JSON.DefaultSuffix(), format: JSON}
 	for _, o := range opts {
 		o(g)
 	}
@@ -153,7 +165,7 @@ func (g *Golden) Assert(name string, actual focus.Value) bool {
 		return true
 	}
 
-	want, err := Load(path)
+	want, err := LoadAs(path, g.format)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			g.t.Errorf("golden: %s does not exist yet.\n"+
@@ -186,7 +198,7 @@ func (g *Golden) write(path string, actual focus.Value) error {
 	if err != nil {
 		return err
 	}
-	return Save(path, fixture)
+	return SaveAs(path, fixture, g.format)
 }
 
 // Build turns a value into a Fixture, decoding it for the human-readable
@@ -217,46 +229,58 @@ func Build(v focus.Value, typeName, description string, provenance *Provenance) 
 	return fixture, nil
 }
 
-// Load reads a golden file.
+// Load reads a golden file, choosing the format from its extension. An
+// unrecognised extension is read as JSON, which is what every fixture written
+// before the other formats existed is.
 func Load(path string) (*Fixture, error) {
-	raw, err := os.ReadFile(path)
+	return LoadAs(path, FormatForPath(path))
+}
+
+// LoadAs reads a golden file in an explicit format.
+func LoadAs(path string, format Format) (*Fixture, error) {
+	// The format is checked before the file is, so an unknown format is
+	// reported as such even when the path does not exist.
+	serializer, err := SerializerFor(format)
 	if err != nil {
 		return nil, err
 	}
 
-	var f Fixture
-	if err := json.Unmarshal(raw, &f); err != nil {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	f, err := serializer.Unmarshal(raw)
+	if err != nil {
 		return nil, fmt.Errorf("parsing %s: %w", path, err)
 	}
-	if f.Format != "" && f.Format != FormatVersion {
-		return nil, fmt.Errorf(
-			"%s was written in format %q, but this version of stellar-focus reads %q",
-			path, f.Format, FormatVersion)
-	}
-	if f.XDR == "" {
-		return nil, fmt.Errorf("%s has no xdr field", path)
-	}
-	return &f, nil
+	return f, nil
 }
 
-// Save writes a golden file, creating the directory if needed.
+// Save writes a golden file, choosing the format from its extension and
+// creating the directory if needed.
+func Save(path string, f *Fixture) error {
+	return SaveAs(path, f, FormatForPath(path))
+}
+
+// SaveAs writes a golden file in an explicit format, creating the directory if
+// needed.
 //
 // Output is indented and newline-terminated so that a diff is line-oriented
 // and reviewable, which is the reason this format exists at all.
-func Save(path string, f *Fixture) error {
+func SaveAs(path string, f *Fixture, format Format) error {
+	serializer, err := SerializerFor(format)
+	if err != nil {
+		return err
+	}
+	data, err := serializer.Marshal(f)
+	if err != nil {
+		return err
+	}
+
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return fmt.Errorf("creating %s: %w", filepath.Dir(path), err)
 	}
-
-	var buf bytes.Buffer
-	enc := json.NewEncoder(&buf)
-	enc.SetIndent("", "  ")
-	enc.SetEscapeHTML(false)
-	if err := enc.Encode(f); err != nil {
-		return fmt.Errorf("encoding fixture: %w", err)
-	}
-
-	if err := os.WriteFile(path, buf.Bytes(), 0o600); err != nil {
+	if err := os.WriteFile(path, data, 0o600); err != nil {
 		return fmt.Errorf("writing %s: %w", path, err)
 	}
 	return nil
