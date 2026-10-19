@@ -65,6 +65,20 @@ Working and tested:
   directory discovery and table-driven assertion running, plus deterministic
   export to Go fuzz seed corpora
 - `focus capture` and `focus verify` against a live network
+- Unified CLI configuration: flags, `FOCUS_*` environment variables and a
+  config file, with one documented precedence order and validation before any
+  request (`internal/cli/flags.go`)
+- A documented exit-code contract: 0 success, 1 the command could not run, 2
+  `verify` ran and found drift, with sentinel errors for classification
+  (`internal/cli/exitcodes.go`). **Migration note:** `focus verify` used to
+  exit 1 for both drift and "could not check"; it now exits 2 for drift and
+  keeps 1 for a check that could not run, so a script that treated `1` as
+  "drift" should test for `2`.
+- Snapshot testing for failure-message formatting, so a layout refactor shows
+  up as a reviewable `.snap` diff rather than passing silently
+  (`pkg/focus/snapshot.go`)
+- End-to-end tests that build the real command and run it in temporary
+  directories, entirely offline (`cmd/focus/e2e_test.go`)
 - Coordinated multi-transaction bundles: one manifest ties a set of related
   captures together, fetched all-or-nothing and re-verified member by member
   (`pkg/capture/bundle.go`)

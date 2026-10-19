@@ -23,8 +23,11 @@ print when it fails*, not *what does this return when it passes*.
 
 ```
 cmd/focus/            main; maps errors to exit codes
+  e2e_test.go         builds and runs the real binary, offline
 internal/cli/
   cli.go            root command, capture, version
+  flags.go          flag, FOCUS_* env and config-file resolution  ← seam: new settings
+  exitcodes.go      the exit-code contract and error classification
   verify.go         verify: re-check stored fixtures against the chain
 internal/faketb/      recording focus.TB — lets focus test its own messages
 internal/fakesource/  in-memory capture.Source, so the CLI tests run offline
@@ -32,6 +35,7 @@ pkg/focus/
   focus.go            TB, Value coercion, panic guard, Encode
   safe_exec.go        panic-safe harness: SafeExec, SafeCall, PanicError
   terminal.go         ANSI colour helpers, field highlighting, TTY detection
+  snapshot.go         snapshot testing for failure messages
   options.go          ignore and normalize options
   ignore_rules.go     ignore path matching: wildcards, globs, case-insensitive
   message.go          failure-message rendering        ← the product
@@ -80,6 +84,57 @@ and `stellar-xdr-lens`. That is enforced by `TestLibraryStaysDependencyLight`
 (compiled graph via `go list -deps`) and by the AST check in
 `pkg/focus/deps_lint_test.go` (import specs, pinpointing file and line)
 rather than left to discipline.
+
+## CLI configuration
+
+A setting has three spellings — a flag, a `FOCUS_`-prefixed environment
+variable, and a config-file key — and `internal/cli/flags.go` is the only
+place that decides which one wins:
+
+```
+explicit flag  >  environment variable  >  config file  >  built-in default
+```
+
+That order is Viper's, but it is stated here because it is a contract, not an
+implementation detail: a script that passes `--network mainnet` must get
+mainnet even when a repository config file says testnet. `newConfig` builds a
+*new* Viper instance rather than touching the global one, so the CLI never
+shares configuration state with anything else that imports Viper.
+
+Every key is the flag name (`--rpc-url` becomes `FOCUS_RPC_URL` and the YAML
+key `rpc-url`), so help text, environment and config file use the same
+vocabulary. The capture settings (`--out`, `--prefix`, `--force`) live on the
+`capture` parent command so both subcommands share one definition rather than
+each re-declaring them.
+
+An explicit `--config` must exist; a missing `.focus.yaml` in the working
+directory is not an error, because most projects have no focus config at all.
+Values are validated once, in a persistent pre-run hook, before a command does
+any work or opens a connection — an unknown network, a non-positive timeout or
+an unrecognised colour fails immediately and offline.
+
+## Exit codes
+
+`internal/cli/exitcodes.go` owns the command's exit-code contract:
+
+| Code | Meaning |
+| --- | --- |
+| 0 | success |
+| 1 | the command could not run: bad usage, unreadable file, unreachable endpoint |
+| 2 | `verify` ran and found fixtures that no longer match the chain |
+
+The distinction that matters is between *could not check* and *checked and
+found something wrong*: a CI job should retry or alert differently on an
+unreachable endpoint than on genuine drift, so the two do not share a code.
+Errors carry sentinel causes (`ErrDrift`, `ErrUsage`) so callers can classify
+with `errors.Is`, and the code survives wrapping because `ExitCode` uses
+`errors.As`. `cmd/focus/main.go` stays tiny: it asks for the code and whether
+to print, then exits.
+
+The codes live here rather than in each command so any focus command compares
+data the same way: `verify` uses `ExitDrift` for fixtures that moved, and a
+future `focus diff` (see roadmap) would take its "values differ" code from the
+same place rather than inventing a second convention.
 
 ## The TB seam
 
@@ -155,6 +210,37 @@ A value present on one side only renders a single labelled side rather than
 an empty pair, and the elision notice for `WithMaxChanges` stays a single
 line. If the walker reports a change with no path — the two sides are
 different kinds of value — the path column reads `(value)`.
+
+## Snapshot testing
+
+Because the failure message is the product, a refactor that quietly changes
+its layout is a regression even when every assertion still returns the right
+boolean. `pkg/focus/snapshot.go` pins that text: `AssertSnapshot` compares a
+string with a file under `testdata/snapshots` (`.snap` by default), and
+`AssertFailureSnapshot` runs an assertion against a recording `TB` and
+snapshots what it reported.
+
+Snapshots are deliberately plain text. A reviewed `.snap` shows exactly what
+a developer will see in a red test, and reviewing its diff is reviewing the
+formatting change. `FOCUS_UPDATE_SNAPSHOTS=1 go test ./...` rewrites the
+files, the same way `-focus.update` rewrites golden fixtures; an explicit
+`WithSnapshotUpdate` wins over the environment for a single call.
+
+Three choices keep the mechanism trustworthy:
+
+- **A missing snapshot is a failure, not an empty expectation.** An absent
+  file is how a new snapshot is created, and it must not pass as though the
+  output matched nothing.
+- **Only line endings and the final newline are normalised.** A CRLF checkout
+  does not produce noise, but a change in indentation or trailing whitespace
+  inside a line — exactly what a visual snapshot is for — still fails.
+- **Names cannot escape their directory.** Absolute paths and `.` or `..`
+  segments are rejected, so copied input cannot make a test read or write
+  outside `testdata/snapshots`.
+
+`TestFailureMessageSnapshot` is the integration point: it snapshots a real
+`AssertEnvelopeEqual` failure, so a change to the diff layout is a red test
+with a one-line snapshot review rather than a silent change in what users see.
 
 ## Ignore rules
 
@@ -598,6 +684,17 @@ violated:
 
 - failure messages name the changed path, show enriched values, and disclose
   ignored paths (`TestAssertEnvelopeEqualFailureMessage`);
+- failure-message formatting is pinned by snapshots, so a layout regression is
+  a reviewable diff (`TestFailureMessageSnapshot`, `TestAssertSnapshot*`);
+- CLI settings resolve in exactly one order — flag over environment over config
+  file over default — and an invalid value fails before any request
+  (`TestFlagOverridesEnvironment`, `TestFlagOverridesConfigFile`,
+  `TestConfigValidation`);
+- exit codes separate "could not check" from "checked and found drift"
+  (`TestExitCodeMapping`, `TestVerifyDriftExitsWithDriftCode`,
+  `TestVerifyReportsUncheckableFixtures`);
+- the built binary is exercised end to end with no network
+  (`cmd/focus/e2e_test.go`);
 - a structural diff renders each change side by side, labelled `want`/`got`,
   with colour stripping back to the plain message and no line growing past
   200 characters (`TestFailureMessageSideBySide`,
