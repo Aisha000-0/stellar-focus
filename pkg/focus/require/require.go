@@ -458,3 +458,16 @@ func TradeExecuted(t focus.TB, value focus.Value, want focus.Trade) {
 	t.Helper()
 	focus.AssertTradeExecuted(fatal(t), value, want)
 }
+
+// Snapshot is focus.AssertSnapshot, stopping the test on failure.
+func Snapshot(t focus.TB, name, got string, opts ...focus.SnapshotOption) {
+	t.Helper()
+	focus.AssertSnapshot(fatal(t), name, got, opts...)
+}
+
+// FailureSnapshot is focus.AssertFailureSnapshot, stopping the test on
+// failure.
+func FailureSnapshot(t focus.TB, name string, fn func(focus.TB), opts ...focus.SnapshotOption) {
+	t.Helper()
+	focus.AssertFailureSnapshot(fatal(t), name, fn, opts...)
+}

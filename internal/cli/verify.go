@@ -25,7 +25,7 @@ import (
 // defaultVerifyDir is what `focus verify` checks when given no paths.
 const defaultVerifyDir = "testdata"
 
-func newVerifyCmd(g *globalFlags, stdout, stderr io.Writer) *cobra.Command {
+func newVerifyCmd(cfg *config, stdout, stderr io.Writer) *cobra.Command {
 	return &cobra.Command{
 		Use:   "verify [paths...]",
 		Short: "Check that stored fixtures still match the chain",
@@ -34,7 +34,10 @@ func newVerifyCmd(g *globalFlags, stdout, stderr io.Writer) *cobra.Command {
 Only fixtures carrying capture provenance can be checked; hand-written ones
 are skipped and reported as such rather than silently passing.
 
-Paths may be files or directories. With no path, testdata is checked.`,
+Paths may be files or directories. With no path, testdata is checked.
+
+Exit status is 0 when every checked fixture still matches, 2 when at least one
+has drifted, and 1 when a fixture could not be checked at all.`,
 		Example: `  focus verify
   focus verify testdata/ --network mainnet`,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -44,24 +47,25 @@ Paths may be files or directories. With no path, testdata is checked.`,
 
 			paths, err := collectFixtures(args)
 			if err != nil {
-				return err
+				return failureErrorf("%v", err)
 			}
 			if len(paths) == 0 {
-				return fmt.Errorf("no fixture files found in %s", strings.Join(args, ", "))
+				return failureErrorf("no fixture files found in %s", strings.Join(args, ", "))
 			}
 
-			endpoint, err := capture.ResolveEndpoint(g.network, g.rpcURL)
+			endpoint, err := capture.ResolveEndpoint(cfg.network(), cfg.rpcURL())
 			if err != nil {
-				return err
+				return usageErrorf("%v", err)
 			}
-			src := newSource(g.network, endpoint, g.timeout)
+			src := newSource(cfg.network(), endpoint, cfg.timeout())
 
-			var checked, matched, drifted, skipped int
+			var checked, matched, drifted, skipped, errored int
 			for _, path := range paths {
 				f, loadErr := golden.Load(path)
 				if loadErr != nil {
 					fmt.Fprintf(stderr, "%-40s ERROR   %v\n", path, loadErr)
-					drifted++
+					errored++
+					checked++
 					continue
 				}
 
@@ -70,9 +74,15 @@ Paths may be files or directories. With no path, testdata is checked.`,
 				case res.Err != nil && errors.Is(res.Err, capture.ErrNotFound):
 					fmt.Fprintf(stderr, "%-40s GONE    %v\n", path, res.Err)
 					drifted++
-				case res.Err != nil:
+				case res.Err != nil && (f.Captured == nil || f.Captured.TxHash == ""):
 					fmt.Fprintf(stdout, "%-40s SKIP    %v\n", path, res.Err)
 					skipped++
+				case res.Err != nil:
+					// The endpoint or the file failed, so this fixture was
+					// not checked. That is not drift and must not be counted
+					// as a pass.
+					fmt.Fprintf(stderr, "%-40s ERROR   %v\n", path, res.Err)
+					errored++
 				case res.Match:
 					fmt.Fprintf(stdout, "%-40s ok\n", path)
 					matched++
@@ -80,7 +90,7 @@ Paths may be files or directories. With no path, testdata is checked.`,
 					fmt.Fprintf(stderr, "%-40s DRIFTED\n", path)
 					if res.Diff != nil {
 						f := lensformat.NewDiffFormatter(
-							lensformat.WithDiffPalette(lensformat.PaletteFor(stderr, g.color)))
+							lensformat.WithDiffPalette(lensformat.PaletteFor(stderr, cfg.colorMode())))
 						if fErr := f.Format(stderr, res.Diff); fErr != nil {
 							fmt.Fprintf(stderr, "  (could not render the diff: %v)\n", fErr)
 						}
@@ -90,11 +100,18 @@ Paths may be files or directories. With no path, testdata is checked.`,
 				checked++
 			}
 
-			fmt.Fprintf(stdout, "\n%d checked: %d ok, %d drifted, %d skipped\n",
+			fmt.Fprintf(stdout, "\n%d checked: %d ok, %d drifted, %d skipped",
 				checked, matched, drifted, skipped)
+			if errored > 0 {
+				fmt.Fprintf(stdout, ", %d errored", errored)
+			}
+			fmt.Fprintln(stdout)
 
+			if errored > 0 {
+				return failureErrorf("%d fixture(s) could not be checked", errored)
+			}
 			if drifted > 0 {
-				return &exitError{code: 1, msg: fmt.Sprintf("%d fixture(s) no longer match the chain", drifted)}
+				return driftErrorf("%d fixture(s) no longer match the chain", drifted)
 			}
 			return nil
 		},
