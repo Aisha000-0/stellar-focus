@@ -74,9 +74,9 @@ func (t *RecordingTransport) Exchanges() []HTTPExchange {
 // ReplayTransport serves only recorded responses and never delegates to a
 // network transport. Requests must arrive in capture order and match exactly.
 type ReplayTransport struct {
-	mu       sync.Mutex
+	mu        sync.Mutex
 	exchanges []HTTPExchange
-	next     int
+	next      int
 }
 
 // NewReplayTransport creates an offline transport over recorded exchanges.
@@ -108,7 +108,7 @@ func (t *ReplayTransport) RoundTrip(request *http.Request) (*http.Response, erro
 	}
 	t.next++
 	return &http.Response{
-		Status: fmt.Sprintf("%d %s", exchange.StatusCode, http.StatusText(exchange.StatusCode)),
+		Status:     fmt.Sprintf("%d %s", exchange.StatusCode, http.StatusText(exchange.StatusCode)),
 		StatusCode: exchange.StatusCode, Header: exchange.ResponseHeader.Clone(),
 		Body: io.NopCloser(bytes.NewReader(exchange.ResponseBody)), Request: request,
 	}, nil

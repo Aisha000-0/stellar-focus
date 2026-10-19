@@ -108,9 +108,9 @@ func newVersionCmd(stdout io.Writer) *cobra.Command {
 
 func newCaptureCmd(g *globalFlags, stdout, stderr io.Writer) *cobra.Command {
 	var (
-		outDir       string
-		prefix       string
-		force        bool
+		outDir        string
+		prefix        string
+		force         bool
 		maskAddresses bool
 	)
 

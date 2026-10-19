@@ -15,10 +15,10 @@ import (
 //
 // This is the only type in stellar-focus that opens a network connection.
 type RPCSource struct {
-	client   *rpcclient.Client
-	network  string
-	endpoint string
-	mu       sync.RWMutex
+	client     *rpcclient.Client
+	network    string
+	endpoint   string
+	mu         sync.RWMutex
 	passphrase string
 }
 

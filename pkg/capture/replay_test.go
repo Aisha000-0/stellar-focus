@@ -60,7 +60,11 @@ func TestReplayTransportRejectsUnrecordedRequests(t *testing.T) {
 
 	transport := capture.NewReplayTransport(nil)
 	request := httptest.NewRequest(http.MethodGet, "https://example.invalid/", nil)
-	if _, err := transport.RoundTrip(request); err == nil || !strings.Contains(err.Error(), "no response") {
+	response, err := transport.RoundTrip(request)
+	if response != nil && response.Body != nil {
+		t.Cleanup(func() { _ = response.Body.Close() })
+	}
+	if err == nil || !strings.Contains(err.Error(), "no response") {
 		t.Fatalf("RoundTrip() error = %v, want an offline replay miss", err)
 	}
 }

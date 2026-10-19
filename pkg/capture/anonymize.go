@@ -118,12 +118,21 @@ func anonymizeAddressUnion(value reflect.Value, mappings map[string]string) erro
 	if !ok {
 		return nil
 	}
+	// A union that does not resolve to an address has nothing to anonymise.
+	// Both the unreadable and the empty case are left untouched rather than
+	// reported, so the surrounding walk carries on with the rest of the
+	// record; the address is only mocked when it could actually be read.
 	address, err := getter.GetAddress()
-	if err != nil || address == "" {
-		return nil
+	if err == nil && address != "" {
+		return setMockedAddress(value, union, address, mappings)
 	}
+	return nil
+}
+
+func setMockedAddress(value reflect.Value, union any, address string, mappings map[string]string) error {
 	mockAddress, ok := mappings[address]
 	if !ok {
+		var err error
 		mockAddress, err = mockAccount(address)
 		if err != nil {
 			return err
