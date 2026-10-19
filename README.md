@@ -275,6 +275,37 @@ live under `testdata/snapshots` as plain text, `.snap` files.
 interface with an in-memory fake, so the whole suite runs offline and
 deterministically — including the tests of `focus capture` and `focus verify`.
 
+## Examples
+
+### Full Lifecycle (TypeScript)
+
+`examples/lifecycle.ts` demonstrates the complete Stellar transaction lifecycle
+on testnet using `@stellar/stellar-sdk`:
+
+1. **FUND** — Create a claimable balance with predicates
+2. **CLAIM** — Claim the balance by the designated recipient
+3. **ATTEST** — Record the claim on a Soroban contract
+4. **SETTLE** — Finalize via contract call
+
+```bash
+cd examples
+npm install
+export FUNDER_SECRET="S..."      # testnet account with XLM
+export CLAIMANT_SECRET="S..."    # testnet recipient
+# Optional for attest/settle:
+export ATTESTOR_SECRET="S..."
+export ATTESTATION_CONTRACT_ID="C..."
+npm run dev
+```
+
+The script prints transaction hashes at each step. View them on
+[Stellar Expert](https://stellar.expert/explorer/testnet) to verify.
+
+**CI** runs `npm run typecheck` in `examples/` to keep the example compiling.
+
+See [examples/README.md](examples/README.md) for full setup and a sample
+Soroban contract for the attest/settle steps.
+
 ## Project status
 
 **Early but real.** v0.1 does what this README says. The library API may shift
