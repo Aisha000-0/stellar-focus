@@ -66,9 +66,9 @@ func TestCaptureLedgerHeaderRecord(t *testing.T) {
 		},
 	}
 
-	rec, err := CaptureLedgerHeader(context.Background(), src)
+	rec, err := FetchLedgerHeader(context.Background(), src)
 	if err != nil {
-		t.Fatalf("CaptureLedgerHeader: %v", err)
+		t.Fatalf("FetchLedgerHeader: %v", err)
 	}
 
 	if rec.Name != "header" || rec.Type != "LedgerHeaderHistoryEntry" {
@@ -132,14 +132,14 @@ func TestParseLedgerHeaderErrors(t *testing.T) {
 
 func TestCaptureLedgerHeaderErrors(t *testing.T) {
 	t.Run("transport failure", func(t *testing.T) {
-		_, err := CaptureLedgerHeader(context.Background(), &fakeHeaderSource{err: fmt.Errorf("boom")})
+		_, err := FetchLedgerHeader(context.Background(), &fakeHeaderSource{err: fmt.Errorf("boom")})
 		if err == nil || !contains(err.Error(), "getLatestLedger") {
 			t.Fatalf("want an RPC error, got: %v", err)
 		}
 	})
 
 	t.Run("no header XDR", func(t *testing.T) {
-		_, err := CaptureLedgerHeader(context.Background(), &fakeHeaderSource{
+		_, err := FetchLedgerHeader(context.Background(), &fakeHeaderSource{
 			resp: &protocol.GetLatestLedgerResponse{Sequence: 1},
 		})
 		if err == nil || !contains(err.Error(), "no header XDR") {

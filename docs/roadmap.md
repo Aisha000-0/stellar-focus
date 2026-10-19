@@ -85,6 +85,13 @@ Working and tested:
 - Deterministic corrupted-envelope mutator over real captures: a fixed seed
   and step count always regenerates the same malformed variant, and the
   report names each corrupted offset (`pkg/capture/mutate.go`)
+- Contract WASM archive capture: the ledger entry that names a deployed
+  contract's code, fetched by contract id and recorded whole so the bytes
+  travel with the transaction fixtures they belong to. The stored code hash
+  is checked against the bytes before anything is written, so a truncated
+  capture reports `ErrContractCodeHashMismatch` rather than archiving a
+  contract that does not match the one the ledger names
+  (`pkg/capture/contract_wasm.go`)
 - Dependency-light library, enforced by compiled-graph and AST tests
 - No assertion panics, enforced by test via a panic-safe harness
   (`SafeExec`/`SafeCall` in `pkg/focus/safe_exec.go`)

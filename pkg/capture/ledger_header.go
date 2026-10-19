@@ -24,7 +24,7 @@ type HeaderSource interface {
 	LedgerHeader(ctx context.Context) (*protocol.GetLatestLedgerResponse, error)
 }
 
-// CaptureLedgerHeader fetches the latest ledger header and turns it into a
+// FetchLedgerHeader fetches the latest ledger header and turns it into a
 // single capture record.
 //
 // The header is what a historical capture is anchored to: its sequence and
@@ -32,7 +32,7 @@ type HeaderSource interface {
 // network parameters the assertion layer (pkg/focus) checks. One record, one
 // fixture — splitting it further would assert on parts of an object the
 // network returns whole.
-func CaptureLedgerHeader(ctx context.Context, src HeaderSource) (Record, error) {
+func FetchLedgerHeader(ctx context.Context, src HeaderSource) (Record, error) {
 	resp, err := src.LedgerHeader(ctx)
 	if err != nil {
 		return Record{}, fmt.Errorf("getLatestLedger: %w", err)

@@ -44,9 +44,9 @@ func TestCaptureSimulationRecords(t *testing.T) {
 		},
 	}
 
-	sim, err := CaptureSimulation(context.Background(), src, protocol.SimulateTransactionRequest{Transaction: "base64Envelope"})
+	sim, err := Simulate(context.Background(), src, protocol.SimulateTransactionRequest{Transaction: "base64Envelope"})
 	if err != nil {
-		t.Fatalf("CaptureSimulation: %v", err)
+		t.Fatalf("Simulate: %v", err)
 	}
 
 	got := sim.Records()
@@ -96,9 +96,9 @@ func TestCaptureSimulationFailedReportsHostError(t *testing.T) {
 			Error: "HostError: Contract(ICall)",
 		},
 	}
-	sim, err := CaptureSimulation(context.Background(), src, protocol.SimulateTransactionRequest{})
+	sim, err := Simulate(context.Background(), src, protocol.SimulateTransactionRequest{})
 	if sim == nil {
-		t.Fatalf("CaptureSimulation returned nil Simulation with error; want the response for inspection")
+		t.Fatalf("Simulate returned nil Simulation with error; want the response for inspection")
 	}
 	if !errors.Is(err, ErrSimulationFailed) {
 		t.Fatalf("want ErrSimulationFailed, got: %v", err)
@@ -113,7 +113,7 @@ func TestCaptureSimulationFailedReportsHostError(t *testing.T) {
 
 func TestCaptureSimulationNetworkError(t *testing.T) {
 	src := &fakeSimulationSource{err: fmt.Errorf("connection refused")}
-	_, err := CaptureSimulation(context.Background(), src, protocol.SimulateTransactionRequest{})
+	_, err := Simulate(context.Background(), src, protocol.SimulateTransactionRequest{})
 	if err == nil {
 		t.Fatal("want an error on transport failure")
 	}

@@ -31,18 +31,18 @@ var ErrSimulationFailed = errors.New("simulation failed")
 // Simulation is one captured simulateTransaction response.
 type Simulation struct {
 	// Resp is the RPC's own response, unmodified, including its error field
-	// when CaptureSimulation passed it through for inspection.
+	// when Simulate passed it through for inspection.
 	Resp *protocol.SimulateTransactionResponse
 }
 
-// CaptureSimulation runs one preflight simulation and records it.
+// Simulate runs one preflight simulation and records it.
 //
 // A host-rejected invocation is reported as an error wrapping
 // ErrSimulationFailed rather than returned as an unmarked success: a capture
 // whose result is an error string is still information, but the caller must
 // handle both branches explicitly, and the error chain carries the host's
 // message for that.
-func CaptureSimulation(ctx context.Context, src SimulationSource, req protocol.SimulateTransactionRequest) (*Simulation, error) {
+func Simulate(ctx context.Context, src SimulationSource, req protocol.SimulateTransactionRequest) (*Simulation, error) {
 	resp, err := src.SimulateTransaction(ctx, req)
 	if err != nil {
 		return nil, fmt.Errorf("simulateTransaction: %w", err)
