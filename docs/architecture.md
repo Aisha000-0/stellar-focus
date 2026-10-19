@@ -560,6 +560,41 @@ fixtures are byte-stable and a test can assert on the whole file.
 hand-written fixture is not stale; it is simply not checkable this way, and
 saying so is more useful than a green tick that means nothing.
 
+Four capture shapes extend `Source` with their own seams so the same offline
+rule holds:
+
+- `capture.SimulationSource` (`pkg/capture/simulate.go`) serves preflight
+  `simulateTransaction` responses. `Simulate` reports a host-rejected
+  invocation through `ErrSimulationFailed` — carrying the host's error text —
+  rather than an unmarked success, and `Records` splits the response into one
+  record per XDR payload: the `SorobanTransactionData` (which carries the
+  resource footprint), each `DiagnosticEvent`, each authorization node in the
+  tree, and each host function return value.
+- `capture.HeaderSource` (`pkg/capture/ledger_header.go`) serves the latest
+  ledger header, the anchor a historical capture is pinned to.
+  `ParseLedgerHeader` decodes the base64 `LedgerHeaderHistoryEntry` into the
+  fields assertions are named for — protocol version, base fee, base reserve,
+  total coins, sequence — and refuses a failed decode rather than returning a
+  zero struct an assertion would pass against nothing.
+- `capture.Mutate` (`pkg/capture/mutate.go`) turns a real captured XDR into a
+  deterministically malformed variation: for a given seed and step count the
+  same corruptions (bit flips, zeroed bytes, `0xFF` fills, truncation) always
+  produce the same mutant, and `Mutations` reports exactly which offsets were
+  touched so a resilience test can name what it exercised.
+- `capture.ContractWASMSource` (`pkg/capture/contract_wasm.go`) serves
+  deployed contract code. `ContractCodeKey` turns a contract id into the
+  base64 `LedgerKey` that names its WASM, and refuses an id that is not 32
+  hex bytes rather than sending a malformed key that would come back "not
+  found" and read as "not deployed". The record keeps the whole
+  `LedgerEntryData` so verification re-checks the entry the network returns
+  rather than a projection of it; `ParseContractWASM` decodes the code hash
+  and bytes for assertions, and reports `ErrNotContractCode` for an entry
+  that turns out to hold something else. Before writing anything, the
+  capture checks the bytes against the ledger's own code hash — contract
+  code is addressed by the hash of its bytes, so this is free — and fails
+  with `ErrContractCodeHashMismatch` instead of archiving a contract that
+  does not match the one the ledger names.
+
 ## Adding an assertion
 
 1. Put it in the file matching its subject — `fields.go`, `results.go`,
