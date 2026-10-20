@@ -125,7 +125,7 @@ can be re-checked later with focus verify.`,
 				return err
 			}
 			return writeFixtures(cmd.Context(), src, records,
-				cfg.outDir(), cfg.prefix(), cfg.force(), stdout)
+				cfg.outDir(), cfg.prefix(), cfg.force(), cfg.maskAddresses(), stdout)
 		},
 	}
 
@@ -145,7 +145,7 @@ can be re-checked later with focus verify.`,
 				return err
 			}
 			return writeFixtures(cmd.Context(), src, records,
-				cfg.outDir(), cfg.prefix(), cfg.force(), stdout)
+				cfg.outDir(), cfg.prefix(), cfg.force(), cfg.maskAddresses(), stdout)
 		},
 	}
 
