@@ -155,7 +155,7 @@ can be re-checked later with focus verify.`,
 				return err
 			}
 			return writeFixtures(cmd.Context(), src, records,
-				cfg.outDir(), cfg.prefix(), cfg.force(), stdout)
+				cfg.outDir(), cfg.prefix(), cfg.force(), cfg.maskAddresses(), stdout)
 		},
 	}
 
@@ -175,7 +175,7 @@ can be re-checked later with focus verify.`,
 				return err
 			}
 			return writeFixtures(cmd.Context(), src, records,
-				cfg.outDir(), cfg.prefix(), cfg.force(), stdout)
+				cfg.outDir(), cfg.prefix(), cfg.force(), cfg.maskAddresses(), stdout)
 		},
 	}
 
@@ -191,9 +191,19 @@ func writeFixtures(
 	src capture.Source,
 	records []capture.Record,
 	outDir, prefix string,
-	force bool,
+	force, maskAddresses bool,
 	stdout io.Writer,
 ) error {
+	if maskAddresses {
+		masked, err := capture.Anonymize(records)
+		if err != nil {
+			return err
+		}
+		for i := range masked {
+			masked[i].Anonymized = true
+		}
+		records = masked
+	}
 	fixtures, err := capture.Capture(ctx, src, records, now())
 	if err != nil {
 		return err
