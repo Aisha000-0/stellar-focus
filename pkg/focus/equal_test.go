@@ -16,7 +16,7 @@ import (
 // repositories.
 func fixture(t testing.TB, name string) string {
 	t.Helper()
-	b, err := os.ReadFile(filepath.Join("..", "..", "testdata", name+".txt"))
+	b, err := os.ReadFile(filepath.Join("..", "..", "pkg", "fuzz", "testdata", name+".txt"))
 	if err != nil {
 		t.Fatalf("reading fixture %s: %v", name, err)
 	}

@@ -46,7 +46,7 @@ var capturedAt = time.Date(2026, 8, 5, 12, 0, 0, 0, time.UTC)
 
 func envelopeXDR(t *testing.T) string {
 	t.Helper()
-	b, err := os.ReadFile(filepath.Join("..", "..", "testdata", "tx_failed.env.txt"))
+	b, err := os.ReadFile(filepath.Join("..", "..", "pkg", "fuzz", "testdata", "tx_failed.env.txt"))
 	if err != nil {
 		t.Fatalf("reading fixture: %v", err)
 	}
@@ -55,7 +55,7 @@ func envelopeXDR(t *testing.T) string {
 
 func resultXDR(t *testing.T) string {
 	t.Helper()
-	b, err := os.ReadFile(filepath.Join("..", "..", "testdata", "tx_failed.res.txt"))
+	b, err := os.ReadFile(filepath.Join("..", "..", "pkg", "fuzz", "testdata", "tx_failed.res.txt"))
 	if err != nil {
 		t.Fatalf("reading fixture: %v", err)
 	}
@@ -394,7 +394,7 @@ func TestDefaultIsTestnet(t *testing.T) {
 
 func fixtureFromFile(t *testing.T, name string) string {
 	t.Helper()
-	b, err := os.ReadFile(filepath.Join("..", "..", "testdata", name))
+	b, err := os.ReadFile(filepath.Join("..", "..", "pkg", "fuzz", "testdata", name))
 	if err != nil {
 		t.Fatalf("reading %s: %v", name, err)
 	}

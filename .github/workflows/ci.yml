@@ -174,7 +174,7 @@ jobs:
           	g.Assert("envelope", strings.TrimSpace(string(b)))
           }
           GOTEST
-          cp testdata/tx_failed.env.txt "$tmp/envelope.txt"
+          cp pkg/fuzz/testdata/tx_failed.env.txt "$tmp/envelope.txt"
           cd "$tmp"
           go mod edit -require github.com/stellar-optics/stellar-focus@v0.0.0
           go mod edit -replace github.com/stellar-optics/stellar-focus="$GITHUB_WORKSPACE"
