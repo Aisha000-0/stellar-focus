@@ -133,6 +133,50 @@ The code is the number the error carries: a contract's own code for
 host's categories — `uint32(xdr.ScErrorCodeScecMissingValue)` for a missing
 storage entry.
 
+#### Naming the fields the contract chose
+
+A Soroban payload on the wire is a map of symbol keys, and a failure that
+shows only that is a failure you have to decode in your head. Give the
+assertion the contract's specification and it will speak the contract's
+language instead:
+
+```go
+spec, err := focus.ContractSpec(contractWasm)   // or build the entries yourself
+if err != nil {
+	t.Fatal(err)
+}
+
+focus.AssertEventEmitted(t, meta, focus.Event{
+	Topics: []any{"transfer"},
+	Data:   map[string]any{"from": from, "amount": 100},
+	Spec:   spec,
+})
+```
+
+A mismatch then names the field, not the wire:
+
+```console
+AssertEventEmitted: no event matched topics["transfer"]  data {amount: u128(200), from: GCJNH…ZST6}
+
+  events present (1):
+    [0] CBTG6…DXKK  topics["transfer"]  data {from: GCJNH…ZST6, amount: u128(100)} [ScValTypeScvMap]
+
+  differences from the closest event:
+    amount: want u128(200), got u128(100)
+```
+
+Both names are shown — the contract's field names and the XDR type — so the
+message can be read either way. The specification is optional everywhere: a
+test that cannot supply one still works, and the specification never changes
+*what* matches, only how it is described.
+
+`AssertReturnValueWithSpec` does the same for a return value, using the
+contract function's output type:
+
+```go
+focus.AssertReturnValueWithSpec(t, meta, map[string]any{"amount": 42}, "withdraw", spec)
+```
+
 ### Typed memos, sources and signers
 
 The display forms (`"text: hello"`, `"id: 42"`) make a wrong memo *type* read
@@ -327,6 +371,18 @@ claims, and that a capture timestamp is RFC3339.
 
 It exits `1` when a fixture has a problem and `0` when everything is clean,
 so it can be a step in CI.
+### Capturing from Horizon
+
+Soroban RPC only keeps recent history, so a fixture for an old transaction
+cannot be captured from it at all. Horizon reaches further back and covers
+every transaction type, so it can be the source instead:
+
+```sh
+focus capture tx 2b2e276a8f99a292… --source horizon
+```
+
+`--source` is `rpc` (the default) or `horizon`. Each has its own default
+endpoint per network, and `--rpc-url` overrides the one in use.
 
 ### Configuration
 
@@ -342,6 +398,7 @@ focus verify testdata/ --config focus.yaml   # or .focus.yaml in the working dir
 ```yaml
 # focus.yaml
 network: mainnet
+source: rpc
 rpc-url: https://mainnet.sorobanrpc.com
 timeout: 45s
 color: never
@@ -433,6 +490,33 @@ The script prints transaction hashes at each step. View them on
 See [examples/README.md](examples/README.md) for full setup and a sample
 Soroban contract for the attest/settle steps.
 
+## Fuzzing
+
+The XDR this project has been reading is a seed corpus worth having: real
+mainnet transactions, captured and kept as fixtures. `pkg/fuzz` hands them to
+a fuzzer, embedded, so there is no path to get wrong:
+
+```go
+import "github.com/stellar-optics/stellar-focus/pkg/fuzz"
+
+func FuzzDecodeEnvelope(f *testing.F) {
+	for _, seed := range fuzz.CorpusFor("TransactionEnvelope") {
+		f.Add(seed)
+	}
+	f.Fuzz(func(t *testing.T, data []byte) {
+		var env xdr.TransactionEnvelope
+		_ = xdr.SafeUnmarshal(data, &env)
+	})
+}
+```
+
+```console
+$ go test -fuzz FuzzDecodeEnvelope -fuzztime 30s
+```
+
+`fuzz.Corpus()` returns every seed, `fuzz.CorpusFor(type)` the seeds of one
+XDR type, and `fuzz.Types()` the types the corpus covers.
+
 ## Project status
 
 **Early but real.** v0.1 does what this README says. The library API may shift
@@ -442,8 +526,10 @@ before v1.0.
 - Golden files with `-focus.update`; capture and verify against a live network.
 - Failure-message snapshots, a unified flag/env/config file, documented exit
   codes, and an offline end-to-end suite for the command.
-- Soroban values render as the XDR wire shape — there is no contract-spec
-  decoding yet. See [docs/roadmap.md](docs/roadmap.md).
+- Soroban values can be matched and rendered by the contract's own field
+  names, when the test supplies the contract's specification.
+- Capture from Soroban RPC or from Horizon, and an embedded fuzz corpus of
+  real mainnet XDR.
 
 ## Contributing
 
