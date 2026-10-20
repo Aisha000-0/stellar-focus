@@ -107,9 +107,15 @@ focus.AssertEventEmitted(t, meta, focus.Event{
 })
 focus.AssertReturnValue(t, meta, xdr.ScVal{Type: xdr.ScValTypeScvU32, U32: &seven})
 focus.AssertContractTrapped(t, result)
+
+// A trap, with the host's own explanation of it from the diagnostic stream.
+focus.AssertContractTrappedWith(t, tx, "Error(Contract, #4)")
 ```
 
 A non-match lists the events that *were* emitted, so you are not left guessing.
+`AssertContractTrappedWith` takes a Soroban RPC `getTransaction` response, or a
+`focus.TrapEvidence{Result, Meta}` pair when the result and meta are separate
+fixtures, and searches the rendered host diagnostics.
 
 ### Ignoring what legitimately varies
 

@@ -250,6 +250,13 @@ func ContractTrapped(t focus.TB, result focus.Value) {
 	focus.AssertContractTrapped(fatal(t), result)
 }
 
+// ContractTrappedWith is focus.AssertContractTrappedWith, stopping the test on
+// failure.
+func ContractTrappedWith(t focus.TB, result focus.Value, want string) {
+	t.Helper()
+	focus.AssertContractTrappedWith(fatal(t), result, want)
+}
+
 // ConstructorState is focus.AssertConstructorState, stopping the test on
 // failure.
 func ConstructorState(t focus.TB, meta focus.Value, want focus.ConstructorState) {

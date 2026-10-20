@@ -21,6 +21,10 @@ Working and tested:
   explanation and hint; operation result codes can be checked by short name,
   and an unknown code or an XDR constant name is called out as such
 - Soroban: event matching, event counts, return values, contract traps
+- Contract traps explained from the host's own diagnostics: the result proves
+  the trap and the diagnostic stream says why — `Error(Contract, #4)`,
+  `Error(WasmVm, InvalidAction)` and the rest — read from a `getTransaction`
+  response or from a result/meta fixture pair with no network call
 - Soroban diagnostic streams: the order of a contract call's diagnostic events
   — call frames, logs, and the events of calls that failed — and the ledger the
   stream was emitted in, with that ledger's close time
