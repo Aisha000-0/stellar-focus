@@ -79,14 +79,15 @@ type Provenance struct {
 
 // Golden compares values against golden files on disk.
 type Golden struct {
-	t       focus.TB
-	dir     string
-	suffix  string
-	format  Format
-	opts    []focus.Option
-	desc    string
-	typeHnt string
-	vars    any
+	t                focus.TB
+	dir              string
+	suffix           string
+	format           Format
+	opts             []focus.Option
+	noiseSuppression bool
+	desc             string
+	typeHnt          string
+	vars             any
 }
 
 // Opt configures a Golden.

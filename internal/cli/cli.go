@@ -80,6 +80,7 @@ precedence.`,
 
 	root.AddCommand(
 		newCaptureCmd(cfg, stdout, stderr),
+		newLedgerKeyCmd(stdout),
 		newVerifyCmd(cfg, stdout, stderr),
 		newVersionCmd(stdout),
 	)
@@ -96,6 +97,35 @@ func newVersionCmd(stdout io.Writer) *cobra.Command {
 			return err
 		},
 	}
+}
+
+func newLedgerKeyCmd(stdout io.Writer) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "ledger-key",
+		Short: "Construct a base64 LedgerKey for capture",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return cmd.Help()
+		},
+	}
+	cmd.AddCommand(&cobra.Command{
+		Use:   "account <G...>",
+		Short: "Encode an account LedgerKey",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			key, err := capture.NewAccountLedgerKey(args[0])
+			if err != nil {
+				return err
+			}
+			encoded, err := capture.EncodeLedgerKey(key)
+			if err != nil {
+				return err
+			}
+			_, err = fmt.Fprintln(stdout, encoded)
+			return err
+		},
+	})
+	return cmd
 }
 
 func newCaptureCmd(cfg *config, stdout, stderr io.Writer) *cobra.Command {
