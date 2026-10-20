@@ -113,19 +113,7 @@ func AssertReturnValue(t TB, meta Value, want Value) bool {
 // a malformed transaction is usually the first question worth answering.
 func AssertContractTrapped(t TB, result Value) bool {
 	t.Helper()
-
-	s, ok := summarize(t, "AssertContractTrapped", result, "TransactionResult")
-	if !ok {
-		return false
-	}
-	for _, op := range s.Operations {
-		if op.Result != nil && op.Result.Code == "invoke_host_function_trapped" {
-			return true
-		}
-	}
-
-	t.Errorf("AssertContractTrapped: no operation trapped\n%s", indent(explainOutcome(s), "  "))
-	return false
+	return contractTrapped(t, "AssertContractTrapped", result)
 }
 
 // Events returns the contract events in a meta, as an escape hatch for checks
@@ -412,7 +400,7 @@ func describeScVal(v xdr.ScVal) string {
 		return "nonce key"
 	case xdr.ScValTypeScvError:
 		if e, ok := v.GetError(); ok {
-			return "error(" + strings.TrimPrefix(e.Type.String(), "ScErrorTypeSce") + ")"
+			return describeScError(e)
 		}
 	case xdr.ScValTypeScvTimepoint:
 		if t, ok := v.GetTimepoint(); ok {

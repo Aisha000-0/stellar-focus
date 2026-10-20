@@ -107,9 +107,15 @@ focus.AssertEventEmitted(t, meta, focus.Event{
 })
 focus.AssertReturnValue(t, meta, xdr.ScVal{Type: xdr.ScValTypeScvU32, U32: &seven})
 focus.AssertContractTrapped(t, result)
+
+// A trap, with the host's own explanation of it from the diagnostic stream.
+focus.AssertContractTrappedWith(t, tx, "Error(Contract, #4)")
 ```
 
 A non-match lists the events that *were* emitted, so you are not left guessing.
+`AssertContractTrappedWith` takes a Soroban RPC `getTransaction` response, or a
+`focus.TrapEvidence{Result, Meta}` pair when the result and meta are separate
+fixtures, and searches the rendered host diagnostics.
 
 ### Ignoring what legitimately varies
 
@@ -223,17 +229,88 @@ testdata/handwritten.golden.json         SKIP    no capture provenance, so there
 3 checked: 2 ok, 0 drifted, 1 skipped
 ```
 
-`verify` exits non-zero on drift and prints the structural diff. A
+`verify` exits `2` on drift and prints the structural diff, `1` when a fixture
+could not be checked at all, and `0` when everything checked still matches. A
 hand-written fixture is reported as skipped rather than quietly passing a
 check it was never eligible for.
 
 Defaults to **testnet**; use `--network mainnet` or `--rpc-url`.
+
+### Configuration
+
+Flags, `FOCUS_*` environment variables and a config file are three spellings
+of the same settings, resolved in that order:
+
+```sh
+focus verify testdata/ --network mainnet
+FOCUS_NETWORK=mainnet focus verify testdata/
+focus verify testdata/ --config focus.yaml   # or .focus.yaml in the working directory
+```
+
+```yaml
+# focus.yaml
+network: mainnet
+rpc-url: https://mainnet.sorobanrpc.com
+timeout: 45s
+color: never
+out: testdata
+prefix: nightly
+force: false
+```
+
+An explicit `--config` must exist; a missing `.focus.yaml` is simply ignored.
+Invalid settings fail before any request is made.
+
+## Snapshots
+
+Failure-message formatting is snapshotted so a layout change is a reviewable
+diff rather than a silent change in what users see:
+
+```go
+focus.AssertFailureSnapshot(t, "envelope_amount_mismatch", func(tb focus.TB) {
+	focus.AssertEnvelopeEqual(tb, want, got)
+})
+```
+
+Create or update snapshots with `FOCUS_UPDATE_SNAPSHOTS=1 go test ./...`. They
+live under `testdata/snapshots` as plain text, `.snap` files.
 
 ## Testing offline
 
 `go test ./...` makes **no network calls**. The RPC client sits behind an
 interface with an in-memory fake, so the whole suite runs offline and
 deterministically — including the tests of `focus capture` and `focus verify`.
+
+## Examples
+
+### Full Lifecycle (TypeScript)
+
+`examples/lifecycle.ts` demonstrates the complete Stellar transaction lifecycle
+on testnet using `@stellar/stellar-sdk`:
+
+1. **FUND** — Create a claimable balance with predicates
+2. **CLAIM** — Claim the balance by the designated recipient
+3. **ATTEST** — Record the claim on a Soroban contract
+4. **SETTLE** — Finalize via contract call
+
+```bash
+cd examples
+npm install
+export FUNDER_SECRET="S..."      # testnet account with XLM
+export CLAIMANT_SECRET="S..."    # testnet recipient
+# Optional for attest/settle:
+export ATTESTOR_SECRET="S..."
+export ATTESTATION_CONTRACT_ID="C..."
+npm run dev
+```
+
+The script prints transaction hashes at each step. View them on
+[Stellar Expert](https://stellar.expert/explorer/testnet) to verify.
+
+**CI** runs `npm run typecheck` in `examples/` to keep the example compiling.
+
+See [examples/README.md](examples/README.md) for full setup and a sample
+Soroban contract for the attest/settle steps.
 
 ## Project status
 
@@ -242,6 +319,8 @@ before v1.0.
 
 - Assertions for envelopes, results, fields and Soroban events.
 - Golden files with `-focus.update`; capture and verify against a live network.
+- Failure-message snapshots, a unified flag/env/config file, documented exit
+  codes, and an offline end-to-end suite for the command.
 - Soroban values render as the XDR wire shape — there is no contract-spec
   decoding yet. See [docs/roadmap.md](docs/roadmap.md).
 
