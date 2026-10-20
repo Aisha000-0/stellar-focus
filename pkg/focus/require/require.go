@@ -244,6 +244,24 @@ func EventsEqual(t focus.TB, meta focus.Value, want []focus.Event, opts ...focus
 	focus.AssertEventsEqual(fatal(t), meta, want, opts...)
 }
 
+// Payment is focus.AssertPayment, stopping the test on failure.
+func Payment(t focus.TB, envelope focus.Value, opIndex int, wantDest string, wantAmount int64, wantAsset string) {
+	t.Helper()
+	focus.AssertPayment(fatal(t), envelope, opIndex, wantDest, wantAmount, wantAsset)
+}
+
+// CreateAccount is focus.AssertCreateAccount, stopping the test on failure.
+func CreateAccount(t focus.TB, envelope focus.Value, opIndex int, wantDest string, wantStartingBalance int64) {
+	t.Helper()
+	focus.AssertCreateAccount(fatal(t), envelope, opIndex, wantDest, wantStartingBalance)
+}
+
+// ChangeTrust is focus.AssertChangeTrust, stopping the test on failure.
+func ChangeTrust(t focus.TB, envelope focus.Value, opIndex int, wantAsset string, wantLimit int64) {
+	t.Helper()
+	focus.AssertChangeTrust(fatal(t), envelope, opIndex, wantAsset, wantLimit)
+}
+
 // ReturnValue is focus.AssertReturnValue, stopping the test on failure.
 func ReturnValue(t focus.TB, meta focus.Value, want focus.Value) {
 	t.Helper()

@@ -101,6 +101,9 @@ func TestEveryMirrorReportsFatally(t *testing.T) {
 		{"EventEmitted", func(tb *faketb.TB) { require.EventEmitted(tb, "bad", focusEvent()) }},
 		{"EventCount", func(tb *faketb.TB) { require.EventCount(tb, "bad", 1) }},
 		{"EventsEqual", func(tb *faketb.TB) { require.EventsEqual(tb, "bad", []focus.Event{}) }},
+		{"Payment", func(tb *faketb.TB) { require.Payment(tb, "bad", 0, "G", 1, "native") }},
+		{"CreateAccount", func(tb *faketb.TB) { require.CreateAccount(tb, "bad", 0, "G", 1) }},
+		{"ChangeTrust", func(tb *faketb.TB) { require.ChangeTrust(tb, "bad", 0, "native", 1) }},
 		{"ReturnValue", func(tb *faketb.TB) { require.ReturnValue(tb, "bad", "x") }},
 		{"ContractTrapped", func(tb *faketb.TB) { require.ContractTrapped(tb, "bad") }},
 		{"ContractTrappedWith", func(tb *faketb.TB) {
@@ -163,6 +166,7 @@ func TestMirrorsStaySilentOnSuccess(t *testing.T) {
 	require.OperationTypes(tb, env, "payment")
 	require.OperationSequence(tb, env, []xdr.OperationType{xdr.OperationTypePayment})
 	require.TimeboundsValid(tb, env, 0, 0)
+	require.Payment(tb, env, 0, "GAPB7YMUQ6MPQ23PTFDNBZP7HGGTZPI2DT5JJURUOIXNPLGHW2O3WYXZ", 100, "native")
 
 	if tb.Failed() {
 		t.Errorf("a passing assertion reported a failure:\n%s", tb.Output())
