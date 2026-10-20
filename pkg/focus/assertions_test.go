@@ -410,6 +410,7 @@ func TestAssertionsNeverPanic(t *testing.T) {
 		focus.AssertNoEvents(tb, v)
 		focus.AssertReturnValue(tb, v, "x")
 		focus.AssertContractTrapped(tb, v)
+		focus.AssertContractTrappedWith(tb, v, "Error(Contract, #4)")
 		focus.AssertEntryCreated(tb, v, v)
 		focus.AssertEntryModified(tb, v, v)
 		focus.AssertEntryDeleted(tb, v, v)
