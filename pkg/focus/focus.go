@@ -210,3 +210,21 @@ func Encode(v Value, typeName string) (string, *lens.Value, error) {
 	}
 	return base64Encode(raw), decoded, nil
 }
+
+// CoerceForBenchmark exposes the internal coerce function for benchmarking.
+// It is not intended for production use.
+func CoerceForBenchmark(v Value, typeName string) (*lens.Value, error) {
+	return coerce(v, typeName)
+}
+
+// LensDecodeForBenchmark exposes lens.Decode for benchmarking.
+// It is not intended for production use.
+func LensDecodeForBenchmark(payload string) (*lens.Value, error) {
+	return lens.Decode(payload)
+}
+
+// LensDiffForBenchmark exposes lens.Diff for benchmarking.
+// It is not intended for production use.
+func LensDiffForBenchmark(want, got *lens.Value) (*lens.DiffResult, error) {
+	return lens.Diff(want, got)
+}
