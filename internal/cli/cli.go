@@ -12,6 +12,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -82,6 +83,7 @@ precedence.`,
 		newCaptureCmd(cfg, stdout, stderr),
 		newVerifyCmd(cfg, stdout, stderr),
 		newVersionCmd(stdout),
+		newLintCmd(cfg, stdout, stderr),
 	)
 	return root
 }
@@ -154,6 +156,102 @@ can be re-checked later with focus verify.`,
 	return cmd
 }
 
+// newLintCmd builds the command that checks fixtures for corruption.
+//
+// The check is static: no network, no chain, no test run. A fixture that
+// was hand-edited, or merged badly, should be caught while it is being
+// written rather than when a test fails weeks later.
+func newLintCmd(cfg *config, stdout, stderr io.Writer) *cobra.Command {
+	return &cobra.Command{
+		Use:   "lint [paths...]",
+		Short: "Check golden fixtures for corruption",
+		Long: `Check every fixture for the problems that would otherwise surface only
+when a test fails.
+
+The checks are static: nothing is fetched, nothing is run and no test is
+executed. A fixture is checked for valid JSON, for fields a fixture has and
+no others, for the format this version reads, for an XDR that is valid
+base64 and decodes as the type the fixture claims, and for a capture
+timestamp that is RFC3339.
+
+Paths may be files or directories. With no path, testdata is checked.
+
+Exit status is 0 when every fixture is clean and 1 when at least one has a
+problem, so the command can be a step in CI.`,
+		Example: `  focus lint testdata/
+  focus lint testdata/envelope.golden.json`,
+		Args: cobra.ArbitraryArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if len(args) == 0 {
+				args = []string{defaultVerifyDir}
+			}
+
+			paths, err := collectFixtureFiles(args)
+			if err != nil {
+				return failureErrorf("%v", err)
+			}
+			if len(paths) == 0 {
+				return failureErrorf("no fixture files found in %s", strings.Join(args, ", "))
+			}
+
+			var clean, broken, problems int
+			for _, path := range paths {
+				found := golden.Lint(path)
+				if len(found) == 0 {
+					fmt.Fprintf(stdout, "%-40s ok\n", path)
+					clean++
+					continue
+				}
+				for _, problem := range found {
+					fmt.Fprintf(stderr, "%-40s %v\n", path, problem)
+					problems++
+				}
+				broken++
+			}
+
+			fmt.Fprintf(stdout, "\n%d checked: %d clean", len(paths), clean)
+			if broken > 0 {
+				fmt.Fprintf(stdout, ", %d with problems", broken)
+			}
+			fmt.Fprintln(stdout)
+
+			if problems > 0 {
+				return failureErrorf("%d problem(s) in %d fixture(s)", problems, broken)
+			}
+			return nil
+		},
+	}
+}
+
+// collectFixtureFiles expands files and directories into the fixture paths
+// they hold.
+//
+// Unlike collectFixtures, it looks for every format the package supports, so
+// a directory of mixed fixtures is checked in full.
+func collectFixtureFiles(args []string) ([]string, error) {
+	suffixes := []string{"*.golden.json", "*.golden.yaml", "*.golden.yml", "*.golden.txt"}
+
+	var out []string
+	for _, arg := range args {
+		info, err := os.Stat(arg)
+		if err != nil {
+			return nil, fmt.Errorf("reading %s: %w", arg, err)
+		}
+		if !info.IsDir() {
+			out = append(out, arg)
+			continue
+		}
+		for _, suffix := range suffixes {
+			entries, err := filepath.Glob(filepath.Join(arg, suffix))
+			if err != nil {
+				return nil, fmt.Errorf("scanning %s: %w", arg, err)
+			}
+			out = append(out, entries...)
+		}
+	}
+	return out, nil
+}
+
 // writeFixtures captures records and writes them, refusing to clobber
 // existing files unless asked.
 func writeFixtures(
@@ -191,6 +289,8 @@ func writeFixtures(
 	return nil
 }
 
+// fixtureLedger reports the ledger a fixture was captured at, for the capture
+// summary.
 func fixtureLedger(f *golden.Fixture) uint32 {
 	if f.Captured == nil {
 		return 0

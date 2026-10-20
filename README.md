@@ -236,6 +236,35 @@ check it was never eligible for.
 
 Defaults to **testnet**; use `--network mainnet` or `--rpc-url`.
 
+### Linting fixtures
+
+A fixture that was hand-edited, or merged badly, can be subtly corrupt:
+invalid JSON, a missing field, an XDR that is not base64, a payload that
+decodes as another type. Those errors surface when a test fails — weeks
+later, in a suite nobody remembers writing.
+
+`focus lint` checks for them statically. No network, no chain, no test run:
+
+```sh
+focus lint testdata/
+```
+
+```console
+$ focus lint testdata/
+testdata/envelope.golden.json            ok
+testdata/result.golden.json              xdr: does not decode as a TransactionResult: …
+
+2 checked: 1 clean, 1 with problems
+```
+
+It checks that the file is valid JSON and holds only fields a fixture has,
+that the format is the one this version reads, that the type and the XDR are
+present, that the XDR is valid base64 and decodes as the type the fixture
+claims, and that a capture timestamp is RFC3339.
+
+It exits `1` when a fixture has a problem and `0` when everything is clean,
+so it can be a step in CI.
+
 ### Configuration
 
 Flags, `FOCUS_*` environment variables and a config file are three spellings

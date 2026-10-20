@@ -253,3 +253,74 @@ func TestBareInvocationPrintsHelp(t *testing.T) {
 		}
 	}
 }
+
+// TestLintAcceptsACleanFixture checks the ordinary case: a fixture nobody
+// has touched is clean, and the command says so.
+func TestLintAcceptsACleanFixture(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "envelope.golden.json")
+
+	fixture, err := golden.Build(fixtureXDR(t, "tx_failed.env.txt"), "TransactionEnvelope", "clean", nil)
+	if err != nil {
+		t.Fatalf("Build() error = %v", err)
+	}
+	if err := golden.Save(path, fixture); err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+
+	stdout, _, err := run(t, "lint", dir)
+	if err != nil {
+		t.Fatalf("lint reported a problem with a clean fixture: %v", err)
+	}
+	if !strings.Contains(stdout, "ok") {
+		t.Errorf("lint did not report the fixture as clean:\n%s", stdout)
+	}
+}
+
+// TestLintReportsCorruptedFixtures is the reason the command exists: a
+// fixture damaged by a hand-edit or a bad merge is caught here rather than
+// when a test fails weeks later.
+func TestLintReportsCorruptedFixtures(t *testing.T) {
+	dir := t.TempDir()
+
+	broken := map[string]string{
+		"invalid-json.golden.json": `{"format": "focus/v1", "type": "TransactionEnvelope",}`,
+		"bad-base64.golden.json":   `{"format": "focus/v1", "type": "TransactionEnvelope", "xdr": "!!! not base64 !!!"}`,
+		"wrong-type.golden.json":   `{"format": "focus/v1", "type": "TransactionResult", "xdr": "AAAA"}`,
+		"old-format.golden.json":   `{"format": "focus/v0", "type": "TransactionEnvelope", "xdr": "AAAA"}`,
+	}
+	for name, content := range broken {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o600); err != nil {
+			t.Fatalf("writing %s: %v", name, err)
+		}
+	}
+
+	stdout, stderr, err := run(t, "lint", dir)
+	if err == nil {
+		t.Fatal("lint succeeded on corrupted fixtures")
+	}
+	if code, _ := ExitCode(err); code != ExitFailure {
+		t.Errorf("lint exited %d, want %d", code, ExitFailure)
+	}
+	for _, name := range []string{"invalid-json", "bad-base64", "wrong-type", "old-format"} {
+		if !strings.Contains(stderr, name) {
+			t.Errorf("the broken fixture %s was not reported:\n%s%s", name, stdout, stderr)
+		}
+	}
+	// The message must say what is wrong, not only that something is.
+	if !strings.Contains(stderr, "not valid base64") {
+		t.Errorf("the problems are not explained:\n%s", stderr)
+	}
+}
+
+// TestLintReportsAnEmptyDirectory checks that the command says so rather
+// than passing a check that never ran.
+func TestLintReportsAnEmptyDirectory(t *testing.T) {
+	_, _, err := run(t, "lint", t.TempDir())
+	if err == nil {
+		t.Fatal("lint succeeded with no fixtures to check")
+	}
+	if !strings.Contains(err.Error(), "no fixture files") {
+		t.Errorf("error is not specific: %v", err)
+	}
+}
