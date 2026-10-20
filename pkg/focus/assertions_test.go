@@ -407,6 +407,7 @@ func TestAssertionsNeverPanic(t *testing.T) {
 		focus.AssertSimulationResourcesWithin(tb, v, 1, 1)
 		focus.AssertEventEmitted(tb, v, focus.Event{})
 		focus.AssertEventCount(tb, v, 0)
+		focus.AssertEventsEqual(tb, v, []focus.Event{{}})
 		focus.AssertNoEvents(tb, v)
 		focus.AssertReturnValue(tb, v, "x")
 		focus.AssertContractTrapped(tb, v)

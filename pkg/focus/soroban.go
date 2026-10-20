@@ -39,6 +39,77 @@ type Event struct {
 	Data any
 }
 
+// EventOption configures an event assertion.
+//
+// Options only relax what a matcher checks, never tighten it: an option can
+// let a difference through, but it can never turn a match into a failure.
+// That keeps a test's meaning simple — the matcher says what must be there,
+// and the options say what need not be.
+//
+// Whatever an option relaxes is named in the failure output, because an
+// assertion that quietly stops checking something is how a test starts
+// passing for the wrong reason.
+type EventOption func(*eventConfig)
+
+// eventConfig holds the resolved settings of an event assertion.
+type eventConfig struct {
+	ignoreContractID bool
+	ignoreTopics     bool
+	ignoreData       bool
+}
+
+// newEventConfig resolves the options of an event assertion.
+func newEventConfig(opts ...EventOption) *eventConfig {
+	c := &eventConfig{}
+	for _, o := range opts {
+		o(c)
+	}
+	return c
+}
+
+// IgnoreEventContractID ignores the contract id of every wanted event, so
+// only the payload is compared.
+//
+// A matcher that names a contract is usually written that way for the
+// reader's benefit — the address is the first thing anyone asks about —
+// while the test itself is about the topics. This option says so
+// explicitly rather than leaving the contract id out of the matcher and
+// losing the documentation.
+func IgnoreEventContractID() EventOption {
+	return func(c *eventConfig) { c.ignoreContractID = true }
+}
+
+// IgnoreEventTopics ignores the topics of every wanted event, so only the
+// payload and the order of the events are compared.
+func IgnoreEventTopics() EventOption {
+	return func(c *eventConfig) { c.ignoreTopics = true }
+}
+
+// IgnoreEventData ignores the payload of every wanted event, so only the
+// topics and the order of the events are compared.
+//
+// This is the option for a contract whose payload carries a value that
+// legitimately differs between runs — a timestamp, a generated id — while
+// the sequence of topics is what the test is about.
+func IgnoreEventData() EventOption {
+	return func(c *eventConfig) { c.ignoreData = true }
+}
+
+// ignoredFields names the fields the options relaxed, for the failure output.
+func (c *eventConfig) ignoredFields() string {
+	var names []string
+	if c.ignoreContractID {
+		names = append(names, "contract id")
+	}
+	if c.ignoreTopics {
+		names = append(names, "topics")
+	}
+	if c.ignoreData {
+		names = append(names, "data")
+	}
+	return strings.Join(names, ", ")
+}
+
 // AssertEventEmitted checks that a transaction meta contains a matching
 // contract event.
 func AssertEventEmitted(t TB, meta Value, want Event) bool {
@@ -80,6 +151,53 @@ func AssertEventCount(t TB, meta Value, want int) bool {
 func AssertNoEvents(t TB, meta Value) bool {
 	t.Helper()
 	return AssertEventCount(t, meta, 0)
+}
+
+// AssertEventsEqual checks that the contract events in a meta are exactly the
+// wanted events, in the wanted order.
+//
+// A contract that runs through several steps says so with a sequence of
+// events — init, deposit, transfer, audit — and the sequence is the point:
+// the same events in a different order describe a different program. This
+// assertion pins the whole list, so both the count and the order of the
+// events have to be right.
+//
+// Each wanted event is matched with the same rules as AssertEventEmitted, so
+// a zero field matches anything and a nil topic matches any single topic.
+// The options relax the comparison for the whole list; see IgnoreEventData
+// and its neighbours.
+//
+// A failure names the index that deviated and prints what was emitted beside
+// what was wanted, so the two can be read against each other, and then lists
+// every event that was emitted.
+func AssertEventsEqual(t TB, meta Value, want []Event, opts ...EventOption) bool {
+	t.Helper()
+	const assertion = "AssertEventsEqual"
+
+	events, ok := contractEvents(t, assertion, meta)
+	if !ok {
+		return false
+	}
+
+	cfg := newEventConfig(opts...)
+
+	if len(events) != len(want) {
+		t.Errorf("%s: meta has %d event(s), want %d\n\n%s",
+			assertion, len(events), len(want), indent(describeEvents(events), "  "))
+		return false
+	}
+
+	for i, w := range want {
+		if eventMatchesWith(events[i], w, cfg) {
+			continue
+		}
+		t.Errorf("%s: %s\n\n%s",
+			assertion,
+			describeEventMismatch(i, len(want), events[i], w, cfg),
+			indent(describeEvents(events), "  "))
+		return false
+	}
+	return true
 }
 
 // AssertReturnValue checks the value a contract invocation returned.
@@ -176,7 +294,16 @@ func contractEvents(t TB, assertion string, meta Value) ([]xdr.ContractEvent, bo
 
 // eventMatches reports whether an event satisfies a matcher.
 func eventMatches(e xdr.ContractEvent, want Event) bool {
-	if want.ContractID != "" {
+	return eventMatchesWith(e, want, newEventConfig())
+}
+
+// eventMatchesWith reports whether an event satisfies a matcher under the
+// given options.
+//
+// The options only relax the comparison, so the matcher still decides what
+// has to be there.
+func eventMatchesWith(e xdr.ContractEvent, want Event, cfg *eventConfig) bool {
+	if !cfg.ignoreContractID && want.ContractID != "" {
 		if e.ContractId == nil {
 			return false
 		}
@@ -191,7 +318,7 @@ func eventMatches(e xdr.ContractEvent, want Event) bool {
 		return false
 	}
 
-	if want.Topics != nil {
+	if !cfg.ignoreTopics && want.Topics != nil {
 		if len(want.Topics) != len(body.Topics) {
 			return false
 		}
@@ -206,7 +333,7 @@ func eventMatches(e xdr.ContractEvent, want Event) bool {
 		}
 	}
 
-	if want.Data != nil {
+	if !cfg.ignoreData && want.Data != nil {
 		wv, ok := scVal(want.Data)
 		if !ok || !body.Data.Equals(wv) {
 			return false
@@ -289,13 +416,44 @@ func describeEvents(events []xdr.ContractEvent) string {
 		fmt.Fprintf(&b, "  [%d] %s", i, contract)
 
 		if body, ok := e.Body.GetV0(); ok {
-			topics := make([]string, 0, len(body.Topics))
-			for _, tpc := range body.Topics {
-				topics = append(topics, describeScVal(tpc))
-			}
-			fmt.Fprintf(&b, "  topics[%s]  data %s", strings.Join(topics, ", "), describeScVal(body.Data))
+			fmt.Fprintf(&b, "  %s", describeEventFields(body))
 		}
 		b.WriteString("\n")
+	}
+	return strings.TrimRight(b.String(), "\n")
+}
+
+// describeEventFields renders an event's topics and payload on one line, so
+// an event can be shown beside the event that was wanted.
+func describeEventFields(body xdr.ContractEventV0) string {
+	topics := make([]string, 0, len(body.Topics))
+	for _, tpc := range body.Topics {
+		topics = append(topics, describeScVal(tpc))
+	}
+	return fmt.Sprintf("topics[%s]  data %s", strings.Join(topics, ", "), describeScVal(body.Data))
+}
+
+// describeEventMismatch renders the event that deviated, with what was
+// emitted beside what was wanted.
+//
+// The two are printed on adjacent lines so they can be read against each
+// other: a failure names the index, and the reader should not have to hold
+// two descriptions in their head to see which topic or payload differs.
+func describeEventMismatch(index, total int, actual xdr.ContractEvent, want Event, cfg *eventConfig) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "event %d of %d does not match\n", index, total)
+
+	actualFields := "(the event body carries no V0 arm, so it has no topics or data)"
+	body, hasBody := actual.Body.GetV0()
+	if hasBody {
+		actualFields = describeEventFields(body)
+	}
+
+	fmt.Fprintf(&b, "  actual:   %s\n", actualFields)
+	fmt.Fprintf(&b, "  expected: %s\n", describeWantedFieldsWith(want, cfg, hasBody))
+
+	if ignored := cfg.ignoredFields(); ignored != "" {
+		fmt.Fprintf(&b, "  (%s ignored by option, so it did not have to match)\n", ignored)
 	}
 	return strings.TrimRight(b.String(), "\n")
 }
@@ -303,28 +461,57 @@ func describeEvents(events []xdr.ContractEvent) string {
 // describeWantedEvent renders a matcher, naming which fields were wildcards
 // so a failing match is diagnosable.
 func describeWantedEvent(want Event) string {
+	return describeWantedFields(want, newEventConfig())
+}
+
+// describeWantedFields renders the fields a matcher checks, naming the
+// wildcards so a failing match is diagnosable.
+//
+// A field the options relaxed is left out, because it is not part of what
+// the matcher is checking any more.
+func describeWantedFields(want Event, cfg *eventConfig) string {
+	return describeWantedFieldsWith(want, cfg, false)
+}
+
+// describeWantedFieldsWith renders the fields a matcher checks, alongside the
+// event that was emitted.
+//
+// A field the matcher left open is shown as a wildcard when the emitted event
+// has one, so the two sides of the comparison line up and a reader can see
+// at a glance that the payload was not what failed.
+func describeWantedFieldsWith(want Event, cfg *eventConfig, openBody bool) string {
 	var parts []string
-	if want.ContractID != "" {
+	if !cfg.ignoreContractID && want.ContractID != "" {
 		parts = append(parts, "contract "+shorten(want.ContractID))
 	}
-	if want.Topics != nil {
-		topics := make([]string, 0, len(want.Topics))
-		for _, tpc := range want.Topics {
-			if tpc == nil {
-				topics = append(topics, "*")
-				continue
+	if !cfg.ignoreTopics {
+		switch {
+		case want.Topics != nil:
+			topics := make([]string, 0, len(want.Topics))
+			for _, tpc := range want.Topics {
+				if tpc == nil {
+					topics = append(topics, "*")
+					continue
+				}
+				if sv, ok := scVal(tpc); ok {
+					topics = append(topics, describeScVal(sv))
+					continue
+				}
+				topics = append(topics, fmt.Sprintf("%v", tpc))
 			}
-			if sv, ok := scVal(tpc); ok {
-				topics = append(topics, describeScVal(sv))
-				continue
-			}
-			topics = append(topics, fmt.Sprintf("%v", tpc))
+			parts = append(parts, "topics["+strings.Join(topics, ", ")+"]")
+		case openBody:
+			parts = append(parts, "topics[*]")
 		}
-		parts = append(parts, "topics["+strings.Join(topics, ", ")+"]")
 	}
-	if want.Data != nil {
-		if sv, ok := scVal(want.Data); ok {
-			parts = append(parts, "data "+describeScVal(sv))
+	if !cfg.ignoreData {
+		switch {
+		case want.Data != nil:
+			if sv, ok := scVal(want.Data); ok {
+				parts = append(parts, "data "+describeScVal(sv))
+			}
+		case openBody:
+			parts = append(parts, "data *")
 		}
 	}
 	if len(parts) == 0 {

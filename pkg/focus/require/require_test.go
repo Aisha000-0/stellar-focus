@@ -100,6 +100,7 @@ func TestEveryMirrorReportsFatally(t *testing.T) {
 		{"SimulationResourcesWithin", func(tb *faketb.TB) { require.SimulationResourcesWithin(tb, "bad", 1, 1) }},
 		{"EventEmitted", func(tb *faketb.TB) { require.EventEmitted(tb, "bad", focusEvent()) }},
 		{"EventCount", func(tb *faketb.TB) { require.EventCount(tb, "bad", 1) }},
+		{"EventsEqual", func(tb *faketb.TB) { require.EventsEqual(tb, "bad", []focus.Event{}) }},
 		{"ReturnValue", func(tb *faketb.TB) { require.ReturnValue(tb, "bad", "x") }},
 		{"ContractTrapped", func(tb *faketb.TB) { require.ContractTrapped(tb, "bad") }},
 		{"ContractTrappedWith", func(tb *faketb.TB) {

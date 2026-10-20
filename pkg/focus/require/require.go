@@ -238,6 +238,12 @@ func EventCount(t focus.TB, meta focus.Value, want int) {
 	focus.AssertEventCount(fatal(t), meta, want)
 }
 
+// EventsEqual is focus.AssertEventsEqual, stopping the test on failure.
+func EventsEqual(t focus.TB, meta focus.Value, want []focus.Event, opts ...focus.EventOption) {
+	t.Helper()
+	focus.AssertEventsEqual(fatal(t), meta, want, opts...)
+}
+
 // ReturnValue is focus.AssertReturnValue, stopping the test on failure.
 func ReturnValue(t focus.TB, meta focus.Value, want focus.Value) {
 	t.Helper()
