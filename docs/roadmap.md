@@ -65,6 +65,20 @@ Working and tested:
   directory discovery and table-driven assertion running, plus deterministic
   export to Go fuzz seed corpora
 - `focus capture` and `focus verify` against a live network
+- Unified CLI configuration: flags, `FOCUS_*` environment variables and a
+  config file, with one documented precedence order and validation before any
+  request (`internal/cli/flags.go`)
+- A documented exit-code contract: 0 success, 1 the command could not run, 2
+  `verify` ran and found drift, with sentinel errors for classification
+  (`internal/cli/exitcodes.go`). **Migration note:** `focus verify` used to
+  exit 1 for both drift and "could not check"; it now exits 2 for drift and
+  keeps 1 for a check that could not run, so a script that treated `1` as
+  "drift" should test for `2`.
+- Snapshot testing for failure-message formatting, so a layout refactor shows
+  up as a reviewable `.snap` diff rather than passing silently
+  (`pkg/focus/snapshot.go`)
+- End-to-end tests that build the real command and run it in temporary
+  directories, entirely offline (`cmd/focus/e2e_test.go`)
 - Coordinated multi-transaction bundles: one manifest ties a set of related
   captures together, fetched all-or-nothing and re-verified member by member
   (`pkg/capture/bundle.go`)
@@ -74,6 +88,24 @@ Working and tested:
 - Deterministic replay tests generated straight from captured fixtures: same
   fixture in, byte-identical `_test.go` out, red with a field diff when the
   fixture or a decoder moves (`pkg/capture/codegen.go`)
+- Transaction preflight simulation capture: `simulateTransaction` responses
+  recorded as per-payload fixtures — transaction data with its resource
+  footprint, diagnostic events, authorization-tree nodes and host function
+  returns — with the host's rejection surfaced as `ErrSimulationFailed`
+  (`pkg/capture/simulate.go`)
+- Latest-ledger header capture with the assertable fields decoded from the
+  XDR: protocol version, base fee, base reserve, total coins and sequence
+  (`pkg/capture/ledger_header.go`)
+- Deterministic corrupted-envelope mutator over real captures: a fixed seed
+  and step count always regenerates the same malformed variant, and the
+  report names each corrupted offset (`pkg/capture/mutate.go`)
+- Contract WASM archive capture: the ledger entry that names a deployed
+  contract's code, fetched by contract id and recorded whole so the bytes
+  travel with the transaction fixtures they belong to. The stored code hash
+  is checked against the bytes before anything is written, so a truncated
+  capture reports `ErrContractCodeHashMismatch` rather than archiving a
+  contract that does not match the one the ledger names
+  (`pkg/capture/contract_wasm.go`)
 - Dependency-light library, enforced by compiled-graph and AST tests
 - No assertion panics, enforced by test via a panic-safe harness
   (`SafeExec`/`SafeCall` in `pkg/focus/safe_exec.go`)

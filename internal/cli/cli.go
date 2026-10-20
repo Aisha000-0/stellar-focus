@@ -8,7 +8,6 @@ package cli
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -33,17 +32,8 @@ var newSource = func(network, endpoint string, timeout time.Duration) capture.So
 // now is injectable so captures in tests carry a fixed timestamp.
 var now = time.Now
 
-type globalFlags struct {
-	network string
-	rpcURL  string
-	timeout time.Duration
-	color   string
-}
-
-// Execute builds and runs the root command. Extra commands are added to the
-// root — the seam through which cmd/focus attaches commands implemented in
-// package main, since a main package cannot be imported into this one.
-func Execute(args []string, stdout, stderr io.Writer, extra ...*cobra.Command) error {
+// Execute builds and runs the root command.
+func Execute(args []string, stdout, stderr io.Writer) error {
 	root := newRootCmd(stdout, stderr)
 	root.AddCommand(extra...)
 	root.SetArgs(args)
@@ -51,7 +41,7 @@ func Execute(args []string, stdout, stderr io.Writer, extra ...*cobra.Command) e
 }
 
 func newRootCmd(stdout, stderr io.Writer) *cobra.Command {
-	g := &globalFlags{}
+	cfg := newConfig()
 
 	root := &cobra.Command{
 		Use:   "focus",
@@ -61,14 +51,24 @@ that stored fixtures still match the chain.
 
 The assertions this repository provides live in the Go package
 github.com/stellar-optics/stellar-focus/pkg/focus; this command exists to
-manage the fixtures those assertions run against.`,
+manage the fixtures those assertions run against.
+
+Settings may come from flags, FOCUS_* environment variables, or a config file
+(--config, or .focus.yaml in the working directory), in that order of
+precedence.`,
 		Example: `  # Record a transaction from testnet as fixtures
   focus capture tx 2b2e276a… --out testdata/
 
   # Check that stored fixtures still match the chain
-  focus verify testdata/`,
+  focus verify testdata/
+
+  # Use mainnet for one invocation
+  FOCUS_NETWORK=mainnet focus verify testdata/`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
+		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+			return cfg.load()
+		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return cmd.Help()
 		},
@@ -77,18 +77,11 @@ manage the fixtures those assertions run against.`,
 	root.SetOut(stdout)
 	root.SetErr(stderr)
 
-	root.PersistentFlags().StringVar(&g.network, "network", capture.NetworkTestnet,
-		"network to talk to: testnet or mainnet")
-	root.PersistentFlags().StringVar(&g.rpcURL, "rpc-url", "",
-		"RPC endpoint, overriding the network default")
-	root.PersistentFlags().DurationVar(&g.timeout, "timeout", 30*time.Second,
-		"timeout for a single RPC call")
-	root.PersistentFlags().StringVar(&g.color, "color", "auto",
-		`when to colourise output: "auto", "always" or "never"`)
+	cfg.bindRootFlags(root)
 
 	root.AddCommand(
-		newCaptureCmd(g, stdout, stderr),
-		newVerifyCmd(g, stdout, stderr),
+		newCaptureCmd(cfg, stdout, stderr),
+		newVerifyCmd(cfg, stdout, stderr),
 		newVersionCmd(stdout),
 	)
 	return root
@@ -106,13 +99,7 @@ func newVersionCmd(stdout io.Writer) *cobra.Command {
 	}
 }
 
-func newCaptureCmd(g *globalFlags, stdout, stderr io.Writer) *cobra.Command {
-	var (
-		outDir string
-		prefix string
-		force  bool
-	)
-
+func newCaptureCmd(cfg *config, stdout, stderr io.Writer) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "capture",
 		Short: "Record real chain data as fixture files",
@@ -128,17 +115,18 @@ can be re-checked later with focus verify.`,
   focus capture tx 2b2e276a… --out testdata/ --prefix failed_payment`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			endpoint, err := capture.ResolveEndpoint(g.network, g.rpcURL)
+			endpoint, err := capture.ResolveEndpoint(cfg.network(), cfg.rpcURL())
 			if err != nil {
-				return err
+				return usageErrorf("%v", err)
 			}
-			src := newSource(g.network, endpoint, g.timeout)
+			src := newSource(cfg.network(), endpoint, cfg.timeout())
 
 			records, err := src.Transaction(cmd.Context(), args[0])
 			if err != nil {
 				return err
 			}
-			return writeFixtures(cmd.Context(), src, records, outDir, prefix, force, stdout)
+			return writeFixtures(cmd.Context(), src, records,
+				cfg.outDir(), cfg.prefix(), cfg.force(), stdout)
 		},
 	}
 
@@ -147,29 +135,22 @@ can be re-checked later with focus verify.`,
 		Short: "Record a ledger entry",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			endpoint, err := capture.ResolveEndpoint(g.network, g.rpcURL)
+			endpoint, err := capture.ResolveEndpoint(cfg.network(), cfg.rpcURL())
 			if err != nil {
-				return err
+				return usageErrorf("%v", err)
 			}
-			src := newSource(g.network, endpoint, g.timeout)
+			src := newSource(cfg.network(), endpoint, cfg.timeout())
 
 			records, err := src.LedgerEntry(cmd.Context(), args[0])
 			if err != nil {
 				return err
 			}
-			return writeFixtures(cmd.Context(), src, records, outDir, prefix, force, stdout)
+			return writeFixtures(cmd.Context(), src, records,
+				cfg.outDir(), cfg.prefix(), cfg.force(), stdout)
 		},
 	}
 
-	for _, c := range []*cobra.Command{txCmd, entryCmd} {
-		c.Flags().StringVarP(&outDir, "out", "o", "testdata",
-			"directory to write fixture files into")
-		c.Flags().StringVar(&prefix, "prefix", "",
-			"filename prefix; defaults to the record name")
-		c.Flags().BoolVar(&force, "force", false,
-			"overwrite fixture files that already exist")
-	}
-
+	cfg.bindCaptureFlags(cmd)
 	cmd.AddCommand(txCmd, entryCmd)
 	return cmd
 }
@@ -216,26 +197,4 @@ func fixtureLedger(f *golden.Fixture) uint32 {
 		return 0
 	}
 	return f.Captured.Ledger
-}
-
-// exitError carries an explicit process exit code.
-type exitError struct {
-	code int
-	msg  string
-}
-
-func (e *exitError) Error() string { return e.msg }
-
-// ExitCode maps an error to a process exit code, matching the conventions of
-// the sibling repositories: 0 success, 1 error, 2 a specific negative
-// outcome.
-func ExitCode(err error) (code int, printable bool) {
-	if err == nil {
-		return 0, false
-	}
-	var ee *exitError
-	if errors.As(err, &ee) {
-		return ee.code, true
-	}
-	return 1, true
 }

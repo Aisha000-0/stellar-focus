@@ -85,8 +85,8 @@ func TestVerifyFlagsGoneFixtures(t *testing.T) {
 	if err == nil {
 		t.Fatal("verify reported success for a fixture that is gone from the network")
 	}
-	if code, _ := ExitCode(err); code != 1 {
-		t.Errorf("exit code %d, want 1", code)
+	if code, _ := ExitCode(err); code != ExitDrift {
+		t.Errorf("exit code %d, want %d", code, ExitDrift)
 	}
 	if !strings.Contains(stderr, "GONE") {
 		t.Errorf("gone fixture not reported as GONE:\n%s", stderr)
@@ -117,7 +117,10 @@ func TestVerifyReportsCorruptFixtures(t *testing.T) {
 	}
 }
 
-func TestVerifySkipsWhenTheEndpointFails(t *testing.T) {
+// TestVerifyReportsUncheckableFixtures checks that a failure to reach the
+// endpoint is reported as an inability to check, not as drift and not as a
+// pass. A CI job needs to tell those three outcomes apart.
+func TestVerifyReportsUncheckableFixtures(t *testing.T) {
 	src := sourceWithTx(t)
 	withFake(t, src)
 
@@ -129,11 +132,14 @@ func TestVerifySkipsWhenTheEndpointFails(t *testing.T) {
 	src.Err = errors.New("endpoint unreachable")
 
 	stdout, _, err := run(t, "verify", dir)
-	if err != nil {
-		t.Fatalf("verify failed on an unreachable endpoint: %v", err)
+	if err == nil {
+		t.Fatal("verify reported success when no fixture could be checked")
 	}
-	if !strings.Contains(stdout, "0 drifted, 2 skipped") {
-		t.Errorf("endpoint failure counted as drift:\n%s", stdout)
+	if code, _ := ExitCode(err); code != ExitFailure {
+		t.Errorf("exit code %d, want %d", code, ExitFailure)
+	}
+	if !strings.Contains(stdout, "0 drifted, 0 skipped, 2 errored") {
+		t.Errorf("endpoint failure was not counted as uncheckable:\n%s", stdout)
 	}
 }
 
@@ -153,23 +159,27 @@ func TestVerifyRejectsAnUnknownNetwork(t *testing.T) {
 	}
 }
 
-func TestVerifyDriftExitsOne(t *testing.T) {
+func TestVerifyDriftExitsWithDriftCode(t *testing.T) {
 	src := sourceWithTx(t)
 	withFake(t, src)
 
 	dir := t.TempDir()
 	captureIntoDir(t, src, dir)
 
-	// The chain moves: the same hash now returns different XDR.
-	src.Transactions[testHash] = driftedRecords()
+	// The chain moves: the same hash now returns different envelope XDR,
+	// while the result still matches.
+	src.Transactions[testHash] = driftedRecords(t)
 
 	_, _, err := run(t, "verify", dir)
 	if err == nil {
 		t.Fatal("verify reported success despite drift")
 	}
 	code, printable := ExitCode(err)
-	if code != 1 || !printable {
-		t.Errorf("ExitCode = (%d, %v), want (1, true)", code, printable)
+	if code != ExitDrift || !printable {
+		t.Errorf("ExitCode = (%d, %v), want (%d, true)", code, printable, ExitDrift)
+	}
+	if !IsDrift(err) {
+		t.Errorf("drift error does not classify as ErrDrift: %v", err)
 	}
 }
 
@@ -211,10 +221,17 @@ func TestCollectFixtures(t *testing.T) {
 }
 
 // driftedRecords is what the fake endpoint returns after the chain has
-// moved: same hash, different payload.
-func driftedRecords() []capture.Record {
-	return []capture.Record{{
-		Name: "envelope", Type: "TransactionEnvelope",
-		XDR: "AAAAchanged", TxHash: testHash,
-	}}
+// moved: same hash, different envelope, same result.
+func driftedRecords(t *testing.T) []capture.Record {
+	t.Helper()
+	return []capture.Record{
+		{
+			Name: "envelope", Type: "TransactionEnvelope",
+			XDR: fixtureXDR(t, "tx_success.env.txt"), TxHash: testHash,
+		},
+		{
+			Name: "result", Type: "TransactionResult",
+			XDR: fixtureXDR(t, "tx_failed.res.txt"), TxHash: testHash,
+		},
+	}
 }
