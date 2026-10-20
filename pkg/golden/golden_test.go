@@ -15,7 +15,7 @@ import (
 // A real captured mainnet envelope, shared with the sibling repositories.
 func envelope(t *testing.T) string {
 	t.Helper()
-	b, err := os.ReadFile(filepath.Join("..", "..", "testdata", "tx_failed.env.txt"))
+	b, err := os.ReadFile(filepath.Join("..", "..", "pkg", "fuzz", "testdata", "tx_failed.env.txt"))
 	if err != nil {
 		t.Fatalf("reading fixture: %v", err)
 	}

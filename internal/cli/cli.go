@@ -28,8 +28,16 @@ var Version = "dev"
 
 // newSource builds the capture source. It is a variable so tests can
 // substitute a fake and exercise the commands without a network.
-var newSource = func(network, endpoint string, timeout time.Duration) capture.Source {
-	return capture.NewRPCSource(network, endpoint, timeout)
+//
+// The kind is the source the user asked for — "rpc" or "horizon" — and the
+// endpoint is the URL that kind resolves to.
+var newSource = func(kind, network, endpoint string, timeout time.Duration) capture.Source {
+	switch kind {
+	case sourceHorizon:
+		return capture.NewHorizonSource(network, endpoint, timeout)
+	default:
+		return capture.NewRPCSource(network, endpoint, timeout)
+	}
 }
 
 // now is injectable so captures in tests carry a fixed timestamp.
@@ -149,11 +157,11 @@ can be re-checked later with focus verify.`,
   focus capture tx 2b2e276a… --out testdata/ --prefix failed_payment`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			endpoint, err := capture.ResolveEndpoint(cfg.network(), cfg.rpcURL())
+			endpoint, err := cfg.endpoint()
 			if err != nil {
 				return usageErrorf("%v", err)
 			}
-			src := newSource(cfg.network(), endpoint, cfg.timeout())
+			src := newSource(cfg.source(), cfg.network(), endpoint, cfg.timeout())
 
 			records, err := src.Transaction(cmd.Context(), args[0])
 			if err != nil {
@@ -169,11 +177,11 @@ can be re-checked later with focus verify.`,
 		Short: "Record a ledger entry",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			endpoint, err := capture.ResolveEndpoint(cfg.network(), cfg.rpcURL())
+			endpoint, err := cfg.endpoint()
 			if err != nil {
 				return usageErrorf("%v", err)
 			}
-			src := newSource(cfg.network(), endpoint, cfg.timeout())
+			src := newSource(cfg.source(), cfg.network(), endpoint, cfg.timeout())
 
 			records, err := src.LedgerEntry(cmd.Context(), args[0])
 			if err != nil {

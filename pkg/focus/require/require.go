@@ -294,6 +294,13 @@ func ReturnValue(t focus.TB, meta focus.Value, want focus.Value) {
 	focus.AssertReturnValue(fatal(t), meta, want)
 }
 
+// ReturnValueWithSpec is focus.AssertReturnValueWithSpec, stopping the test
+// on failure.
+func ReturnValueWithSpec(t focus.TB, meta focus.Value, want focus.Value, function string, spec []xdr.ScSpecEntry) {
+	t.Helper()
+	focus.AssertReturnValueWithSpec(fatal(t), meta, want, function, spec)
+}
+
 // ContractTrapped is focus.AssertContractTrapped, stopping the test on failure.
 func ContractTrapped(t focus.TB, result focus.Value) {
 	t.Helper()

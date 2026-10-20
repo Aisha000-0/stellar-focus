@@ -16,13 +16,20 @@ import (
 
 const testHash = "2b2e276a8f99a2927580eca2c8d665c0adaef9526476f5549269798380a66648"
 
+// lastSourceKind records the kind of source the command asked for, so a test
+// can check that --source reached the source factory.
+var lastSourceKind string
+
 // withFake swaps the capture source and the clock so the commands run offline
 // and produce byte-stable output.
 func withFake(t *testing.T, src *fakesource.Source) {
 	t.Helper()
 
 	originalSource, originalNow := newSource, now
-	newSource = func(string, string, time.Duration) capture.Source { return src }
+	newSource = func(kind, _, _ string, _ time.Duration) capture.Source {
+		lastSourceKind = kind
+		return src
+	}
 	now = func() time.Time { return time.Date(2026, 8, 5, 12, 0, 0, 0, time.UTC) }
 	t.Cleanup(func() { newSource, now = originalSource, originalNow })
 }
@@ -36,7 +43,7 @@ func run(t *testing.T, args ...string) (stdout, stderr string, err error) {
 
 func fixtureXDR(t *testing.T, name string) string {
 	t.Helper()
-	b, err := os.ReadFile(filepath.Join("..", "..", "testdata", name))
+	b, err := os.ReadFile(filepath.Join("..", "..", "pkg", "fuzz", "testdata", name))
 	if err != nil {
 		t.Fatalf("reading %s: %v", name, err)
 	}
@@ -79,6 +86,36 @@ func TestCaptureTxWritesFixtures(t *testing.T) {
 	}
 	if !strings.Contains(stdout, "wrote") {
 		t.Errorf("capture printed nothing useful:\n%s", stdout)
+	}
+}
+
+// TestCaptureUsesTheChosenSource checks that --source reaches the source
+// factory, which is the whole point of the flag.
+func TestCaptureUsesTheChosenSource(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+		want string
+	}{
+		{"the default", nil, "rpc"},
+		{"rpc", []string{"--source", "rpc"}, "rpc"},
+		{"horizon", []string{"--source", "horizon"}, "horizon"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			clearFocusEnv(t)
+			withFake(t, sourceWithTx(t))
+			lastSourceKind = ""
+
+			args := append([]string{"capture", "tx", testHash, "--out", t.TempDir()}, tc.args...)
+			if _, _, err := run(t, args...); err != nil {
+				t.Fatalf("Execute() error = %v", err)
+			}
+			if lastSourceKind != tc.want {
+				t.Errorf("the command asked for the %q source, want %q", lastSourceKind, tc.want)
+			}
+		})
 	}
 }
 

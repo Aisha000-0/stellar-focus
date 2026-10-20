@@ -187,6 +187,82 @@ func buildSorobanMeta(t testing.TB, events ...xdr.ContractEvent) string {
 	})
 }
 
+// transferSpec builds the specification of a contract with a transfer event
+// whose payload is a struct of named fields.
+//
+// It is the shape the issue describes: the contract's author writes
+// {from: Address, amount: u128}, and the wire carries a map keyed by those
+// names.
+func transferSpec() []xdr.ScSpecEntry {
+	address := xdr.ScSpecTypeDef{Type: xdr.ScSpecTypeScSpecTypeAddress}
+	amount := xdr.ScSpecTypeDef{Type: xdr.ScSpecTypeScSpecTypeU128}
+
+	return []xdr.ScSpecEntry{
+		{
+			Kind: xdr.ScSpecEntryKindScSpecEntryUdtStructV0,
+			UdtStructV0: &xdr.ScSpecUdtStructV0{
+				Name: "TransferData",
+				Fields: []xdr.ScSpecUdtStructFieldV0{
+					{Name: "from", Type: address},
+					{Name: "amount", Type: amount},
+				},
+			},
+		},
+		{
+			Kind: xdr.ScSpecEntryKindScSpecEntryEventV0,
+			EventV0: &xdr.ScSpecEventV0{
+				Name:       "transfer",
+				DataFormat: xdr.ScSpecEventDataFormatScSpecEventDataFormatSingleValue,
+				Params: []xdr.ScSpecEventParamV0{
+					{
+						Name:     "data",
+						Type:     xdr.ScSpecTypeDef{Type: xdr.ScSpecTypeScSpecTypeUdt, Udt: &xdr.ScSpecTypeUdt{Name: "TransferData"}},
+						Location: xdr.ScSpecEventParamLocationV0ScSpecEventParamLocationData,
+					},
+				},
+			},
+		},
+	}
+}
+
+// transferEvent builds a contract event whose payload is the map the
+// transfer specification describes.
+func transferEvent(t testing.TB, from string, amount uint64) xdr.ContractEvent {
+	t.Helper()
+
+	id, err := xdr.AddressToAccountId(from)
+	if err != nil {
+		t.Fatalf("parsing address %s: %v", from, err)
+	}
+	addr := xdr.ScAddress{Type: xdr.ScAddressTypeScAddressTypeAccount, AccountId: &id}
+
+	sym := xdr.ScSymbol("transfer")
+	fromKey := xdr.ScSymbol("from")
+	amountKey := xdr.ScSymbol("amount")
+	amountVal := xdr.UInt128Parts{Hi: 0, Lo: xdr.Uint64(amount)}
+
+	entries := xdr.ScMap{
+		{Key: xdr.ScVal{Type: xdr.ScValTypeScvSymbol, Sym: &fromKey}, Val: xdr.ScVal{Type: xdr.ScValTypeScvAddress, Address: &addr}},
+		{Key: xdr.ScVal{Type: xdr.ScValTypeScvSymbol, Sym: &amountKey}, Val: xdr.ScVal{Type: xdr.ScValTypeScvU128, U128: &amountVal}},
+	}
+	mapPtr := &entries
+
+	var contractID xdr.ContractId
+	copy(contractID[:], []byte("focus-test-contract-id-32bytes!!"))
+
+	return xdr.ContractEvent{
+		Type:       xdr.ContractEventTypeContract,
+		ContractId: &contractID,
+		Body: xdr.ContractEventBody{
+			V: 0,
+			V0: &xdr.ContractEventV0{
+				Topics: []xdr.ScVal{{Type: xdr.ScValTypeScvSymbol, Sym: &sym}},
+				Data:   xdr.ScVal{Type: xdr.ScValTypeScvMap, Map: &mapPtr},
+			},
+		},
+	}
+}
+
 // accountEntryValue builds a ledger entry holding an account with the given
 // balance, thresholds and signers.
 func accountEntryValue(t testing.TB, addr string, balance int64, th xdr.Thresholds, signers ...xdr.Signer) xdr.LedgerEntry {

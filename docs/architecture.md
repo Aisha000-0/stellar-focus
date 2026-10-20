@@ -57,6 +57,7 @@ pkg/focus/
   sponsorship.go      who pays an entry's reserve
   inflation.go        inflation payouts and ledger fee-pool assertions
   soroban.go          events, return values, contract errors
+  spec.go             contract specifications: field names, and ContractSpec
   traps.go            contract traps and the host diagnostics that explain them
   constructor.go      deployment state and owner binding (__constructor)
   diagnostic_order.go diagnostic stream order and timelines
@@ -65,9 +66,13 @@ pkg/focus/
   require/            Fatalf mirrors of everything above
   require/audit.go    AST parity audit between focus and require
 pkg/golden/           golden files, -focus.update
+pkg/fuzz/             seed corpora for downstream fuzzers
+  fuzz.go            embedded corpus: Corpus, CorpusFor, Types
+  testdata/          the captured mainnet XDR the corpus is built from
 pkg/capture/
   capture.go        Source interface, RPC impl, Verify  ← seam: new sources
   rpc.go            the Soroban RPC Source
+  horizon.go        the Horizon Source
   cache.go          Scraper: rate-limited fetches, .focus/cache
   bundle.go         multi-transaction capture with a manifest
   codegen.go        deterministic replay-test generation from fixtures
@@ -351,6 +356,47 @@ renderable instead of panicking. Matching is case-sensitive; a hit that
 differs only in case is called out in the failure, because that is almost
 always the mistake, and an empty diagnostic stream is reported as
 unsearchable rather than treated as a pass.
+
+## Contract specifications: the names the contract chose
+
+A Soroban payload on the wire is a map of symbol keys, and an ScVal
+discriminant says what each value is. That is enough to compare two
+payloads, and not enough to read one: the developer who wrote the contract
+knows the payload as `{from: Address, amount: u128}`, and a failure that
+says `ScMapEntry` does not tell them which field is wrong.
+
+`spec.go` reads a contract's specification — the `ScSpecEntry` list that
+names its structs, unions, enums, events and functions — and turns it into
+the names a failure message uses.
+
+**The specification is an input, not a mode.** `Event.Spec` and
+`AssertReturnValueWithSpec` take one; every other path is unchanged. A test
+that cannot supply a specification still works, and a specification never
+changes *what* matches, only how it is described. That is the rule the
+tests pin: the same matcher passes and fails the same way with and without
+one.
+
+**The specification is indexed once, per assertion.** `newSpecIndex` walks
+the entries into maps by name; an entry whose union arm is missing is
+skipped rather than fatal, because a broken specification should cost the
+names it carries, not the whole assertion. `resolveType` then turns a type
+definition into the *shape* of the value it describes — named fields, a
+sequence, or a plain value — and every comparison and every rendering goes
+through that shape. One shape, two uses: it decides how a wanted value is
+compared, and how an actual value is printed.
+
+**Both names are shown.** The contract's field names and the XDR type are
+printed together (`{from: GCJNH…ZST6, amount: u128(100)} [ScValTypeScvMap]`),
+because a reader may know one and not the other. The failure names the
+field that differs (`amount: want u128(200), got u128(100)`) rather than
+leaving the reader to compare two maps.
+
+**The specification can come from the contract itself.**
+`focus.ContractSpec(wasm)` reads the `contractspec` custom section out of a
+compiled contract, so a test that has the contract's bytes needs no second
+file. The WebAssembly binary format is walked directly rather than decoded:
+the section is the only part of the module that matters here, and a
+dependency to parse the rest of it would cost more than it saves.
 
 ## Contract deployment state
 
@@ -720,6 +766,32 @@ rule holds:
   code is addressed by the hash of its bytes, so this is free — and fails
   with `ErrContractCodeHashMismatch` instead of archiving a contract that
   does not match the one the ledger names.
+- `capture.HorizonSource` (`pkg/capture/horizon.go`) serves Horizon's REST
+  API, which reaches further back than a Soroban RPC endpoint's retention
+  window and covers every transaction type. It returns the same three
+  records per transaction — envelope, result, meta — so a fixture captured
+  from Horizon is indistinguishable from one captured from RPC. The CLI
+  chooses between them with `--source rpc|horizon`; each source has its own
+  default endpoint per network, because an RPC endpoint and a Horizon
+  endpoint are different services.
+
+## The fuzz corpus
+
+`pkg/fuzz` hands the repository's captured XDR to a downstream fuzzer. The
+corpus lives in `pkg/fuzz/testdata`, embedded with `//go:embed`, so it is
+available wherever the module is imported and no filesystem path can be got
+wrong.
+
+The fixtures moved there rather than being copied: one corpus, one home. The
+manifest beside them says which XDR type each file holds, so `CorpusFor`
+can select by type without inferring it from a filename, and a test asserts
+that the embedded corpus and the files on disk are the same payloads — a
+corpus that drifts from its captures is worse than no corpus.
+
+One seed is built rather than captured: the chain's meta was not captured
+with the transactions, and a meta is where the interesting structures live —
+contract events and ScVal payloads. It is built deterministically, so the
+corpus does not change from run to run.
 
 ## Adding an assertion
 

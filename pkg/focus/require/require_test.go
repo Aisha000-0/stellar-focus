@@ -15,7 +15,7 @@ import (
 
 func fixture(t *testing.T, name string) string {
 	t.Helper()
-	b, err := os.ReadFile(filepath.Join("..", "..", "..", "testdata", name))
+	b, err := os.ReadFile(filepath.Join("..", "..", "..", "pkg", "fuzz", "testdata", name))
 	if err != nil {
 		t.Fatalf("reading %s: %v", name, err)
 	}

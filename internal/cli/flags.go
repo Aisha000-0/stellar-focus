@@ -45,6 +45,7 @@ const (
 	keyConfig  = "config"
 	keyNetwork = "network"
 	keyRPCURL  = "rpc-url"
+	keySource  = "source"
 	keyTimeout = "timeout"
 	keyColor   = "color"
 	keyOut     = "out"
@@ -53,10 +54,19 @@ const (
 	keyMask    = "mask-addresses"
 )
 
+// The capture sources the command can talk to.
+const (
+	// sourceRPC captures from a Soroban RPC endpoint.
+	sourceRPC = "rpc"
+	// sourceHorizon captures from a Horizon REST endpoint.
+	sourceHorizon = "horizon"
+)
+
 // Defaults, declared once so a flag and a config fallback cannot drift apart.
 const (
 	defaultNetwork = capture.NetworkTestnet
 	defaultRPCURL  = ""
+	defaultSource  = sourceRPC
 	defaultTimeout = 30 * time.Second
 	defaultColor   = "auto"
 	defaultOutDir  = "testdata"
@@ -92,6 +102,7 @@ func newConfig() *config {
 
 	v.SetDefault(keyNetwork, defaultNetwork)
 	v.SetDefault(keyRPCURL, defaultRPCURL)
+	v.SetDefault(keySource, defaultSource)
 	v.SetDefault(keyTimeout, defaultTimeout)
 	v.SetDefault(keyColor, defaultColor)
 	v.SetDefault(keyOut, defaultOutDir)
@@ -111,7 +122,9 @@ func (c *config) bindRootFlags(root *cobra.Command) {
 	flags.String(keyNetwork, defaultNetwork,
 		"network to talk to: testnet or mainnet")
 	flags.String(keyRPCURL, defaultRPCURL,
-		"RPC endpoint, overriding the network default")
+		"endpoint override, for the source in use")
+	flags.String(keySource, defaultSource,
+		"where to capture from: rpc or horizon")
 	flags.Duration(keyTimeout, defaultTimeout,
 		"timeout for a single RPC call")
 	flags.String(keyColor, defaultColor,
@@ -120,6 +133,7 @@ func (c *config) bindRootFlags(root *cobra.Command) {
 	c.bind(flags, configFlag)
 	c.bind(flags, keyNetwork)
 	c.bind(flags, keyRPCURL)
+	c.bind(flags, keySource)
 	c.bind(flags, keyTimeout)
 	c.bind(flags, keyColor)
 }
@@ -209,7 +223,12 @@ func (c *config) validate() error {
 	if c.network() == "" {
 		return usageErrorf("network must not be empty")
 	}
-	if _, err := capture.ResolveEndpoint(c.network(), c.rpcURL()); err != nil {
+	switch c.source() {
+	case sourceRPC, sourceHorizon:
+	default:
+		return usageErrorf(`source must be %q or %q, got %q`, sourceRPC, sourceHorizon, c.source())
+	}
+	if _, err := c.endpoint(); err != nil {
 		return usageErrorf("%v", err)
 	}
 	if c.timeout() <= 0 {
@@ -229,6 +248,27 @@ func (c *config) validate() error {
 // network is the network name, from flag, environment or config.
 func (c *config) network() string {
 	return strings.TrimSpace(c.v.GetString(keyNetwork))
+}
+
+// source is the capture source: rpc or horizon.
+func (c *config) source() string {
+	return strings.TrimSpace(c.v.GetString(keySource))
+}
+
+// endpoint is the address the capture source talks to.
+//
+// The default depends on the source: a Soroban RPC endpoint and a Horizon
+// endpoint are different services, and pointing one at the other fails in a
+// way that is not obvious from the error.
+func (c *config) endpoint() (string, error) {
+	switch c.source() {
+	case sourceHorizon:
+		return capture.ResolveHorizonEndpoint(c.network(), c.rpcURL())
+	case sourceRPC:
+		return capture.ResolveEndpoint(c.network(), c.rpcURL())
+	default:
+		return "", fmt.Errorf("unknown source %q", c.source())
+	}
 }
 
 // rpcURL is the endpoint override. The snake_case spelling is accepted so a
