@@ -105,6 +105,10 @@ type DiagnosticEventMatch struct {
 	Topics []any
 	// Data matches the event payload. Nil matches any payload.
 	Data any
+	// Spec is the contract's specification: the ScSpecEntry list that names
+	// its types and events. It is optional, and it changes only how the
+	// payload is described, never whether it matches.
+	Spec []xdr.ScSpecEntry
 	// Call filters by whether the call that emitted the event succeeded.
 	Call CallOutcome
 }
@@ -384,7 +388,12 @@ func diagnosticEventMatches(e DiagnosticEvent, w DiagnosticEventMatch) bool {
 		// CallOutcomeAny, and any value outside the defined set, filters
 		// nothing.
 	}
-	return eventMatches(e.event, Event{ContractID: w.ContractID, Topics: w.Topics, Data: w.Data})
+	return eventMatches(e.event, Event{
+		ContractID: w.ContractID,
+		Topics:     w.Topics,
+		Data:       w.Data,
+		Spec:       w.Spec,
+	}, newSpecIndex(w.Spec))
 }
 
 // indexOfDiagnosticEvent returns the position of the first event at or after

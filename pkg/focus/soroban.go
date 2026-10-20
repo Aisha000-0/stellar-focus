@@ -29,6 +29,15 @@ func contractIDString(id xdr.ContractId) (string, error) {
 //	    ContractID: "CBGSB…",
 //	    Topics:     []any{"transfer", from, to},
 //	})
+//
+// With a contract's specification, the data can be named the way the
+// contract's author named it, and a failure says which field differs:
+//
+//	focus.AssertEventEmitted(t, meta, focus.Event{
+//	    Topics: []any{"transfer"},
+//	    Data:   map[string]any{"from": from, "amount": 100},
+//	    Spec:   spec,
+//	})
 type Event struct {
 	// ContractID is the strkey contract address. Empty matches any contract.
 	ContractID string
@@ -37,7 +46,21 @@ type Event struct {
 	// two-topic event whose first topic is the symbol "transfer".
 	Topics []any
 	// Data is the event payload. Nil matches any payload.
+	//
+	// With a specification, a map of field names is matched against the
+	// fields the contract declares, and a failure names the field that
+	// differs. The map must name every field the payload has: a field the
+	// payload carries and the matcher does not name is a mismatch, so a
+	// test says what it means rather than what it happens to check.
+	//
+	// Without a specification, the payload is compared as it is.
 	Data any
+	// Spec is the contract's specification: the ScSpecEntry list that
+	// names its types and events. It is optional, and it changes only how
+	// the payload is described, never whether it matches.
+	//
+	// focus.ContractSpec extracts one from a compiled contract.
+	Spec []xdr.ScSpecEntry
 }
 
 // AssertEventEmitted checks that a transaction meta contains a matching
@@ -50,14 +73,17 @@ func AssertEventEmitted(t TB, meta Value, want Event) bool {
 		return false
 	}
 
+	spec := newSpecIndex(want.Spec)
+
 	for _, e := range events {
-		if eventMatches(e, want) {
+		if eventMatches(e, want, spec) {
 			return true
 		}
 	}
 
-	t.Errorf("AssertEventEmitted: no event matched %s\n\n%s",
-		describeWantedEvent(want), indent(describeEvents(events), "  "))
+	t.Errorf("AssertEventEmitted: no event matched %s\n\n%s%s%s",
+		describeWantedEvent(want), indent(describeEvents(events, spec), "  "),
+		describeEventDiffs(events, want, spec), describeSpecHint(want))
 	return false
 }
 
@@ -71,7 +97,7 @@ func AssertEventCount(t TB, meta Value, want int) bool {
 	}
 	if len(events) != want {
 		t.Errorf("AssertEventCount: meta has %d event(s), want %d\n\n%s",
-			len(events), want, indent(describeEvents(events), "  "))
+			len(events), want, indent(describeEvents(events, nil), "  "))
 		return false
 	}
 	return true
@@ -86,24 +112,85 @@ func AssertNoEvents(t TB, meta Value) bool {
 // AssertReturnValue checks the value a contract invocation returned.
 func AssertReturnValue(t TB, meta Value, want Value) bool {
 	t.Helper()
+	return assertReturnValue(t, "AssertReturnValue", meta, want, "", nil)
+}
 
-	soroban, ok := sorobanMeta(t, "AssertReturnValue", meta)
+// AssertReturnValueWithSpec checks the value a contract invocation returned,
+// naming the parts of the value the way the contract's author named them.
+//
+// function names the contract function whose output type describes the
+// value — "transfer", say. An empty name is accepted when the
+// specification declares exactly one function.
+//
+// spec is the contract's ScSpecEntry list; focus.ContractSpec extracts one
+// from a compiled contract. The specification changes how the value is
+// described, not whether it matches: the wanted value must name every
+// field the returned value has.
+//
+//	focus.AssertReturnValueWithSpec(t, meta,
+//	    map[string]any{"from": from, "amount": 100},
+//	    "transfer", spec)
+func AssertReturnValueWithSpec(t TB, meta Value, want Value, function string, spec []xdr.ScSpecEntry) bool {
+	t.Helper()
+	return assertReturnValue(t, "AssertReturnValueWithSpec", meta, want, function, spec)
+}
+
+// assertReturnValue checks a return value, with an optional specification
+// describing its parts.
+func assertReturnValue(t TB, assertion string, meta Value, want Value, function string, entries []xdr.ScSpecEntry) bool {
+	t.Helper()
+
+	soroban, ok := sorobanMeta(t, assertion, meta)
 	if !ok {
 		return false
 	}
 
-	wantVal, ok := scVal(want)
-	if !ok {
-		t.Errorf("AssertReturnValue: want value could not be read as an ScVal")
+	index := newSpecIndex(entries)
+
+	// The specification describes the return value, so the wanted value is
+	// matched against it field by field rather than as one opaque value.
+	if index.empty() {
+		wantVal, ok := scVal(want)
+		if !ok {
+			t.Errorf("%s: want value could not be read as an ScVal", assertion)
+			return false
+		}
+		if soroban.ReturnValue.Equals(wantVal) {
+			return true
+		}
+		t.Errorf("%s: contract returned %s, want %s",
+			assertion, describeScVal(soroban.ReturnValue), describeScVal(wantVal))
 		return false
 	}
 
-	if soroban.ReturnValue.Equals(wantVal) {
+	name := strings.TrimSpace(function)
+	if name == "" {
+		only, ok := index.onlyFunction()
+		if !ok {
+			t.Errorf("%s: the contract specification declares %d function(s), so the one to check "+
+				"must be named", assertion, len(index.functions))
+			return false
+		}
+		name = only
+	}
+
+	output, ok := index.functionOutput(name)
+	if !ok {
+		t.Errorf("%s: the contract specification has no function named %q", assertion, name)
+		return false
+	}
+
+	returnType := index.resolveType(&output)
+	diffs := index.specDiff(returnType, want, soroban.ReturnValue)
+	if len(diffs) == 0 {
 		return true
 	}
 
-	t.Errorf("AssertReturnValue: contract returned %s, want %s",
-		describeScVal(soroban.ReturnValue), describeScVal(wantVal))
+	t.Errorf("%s: contract returned %s, want %s\n\n%s",
+		assertion,
+		index.describeSpecValue(returnType, soroban.ReturnValue),
+		index.describeWantedValue(returnType, want),
+		indent(strings.Join(diffs, "\n"), "  "))
 	return false
 }
 
@@ -521,7 +608,10 @@ func contractEvents(t TB, assertion string, meta Value) ([]xdr.ContractEvent, bo
 }
 
 // eventMatches reports whether an event satisfies a matcher.
-func eventMatches(e xdr.ContractEvent, want Event) bool {
+//
+// spec is the contract's specification, when the matcher supplied one. It
+// describes the payload; it does not change whether the payload matches.
+func eventMatches(e xdr.ContractEvent, want Event, spec *specIndex) bool {
 	if want.ContractID != "" {
 		if e.ContractId == nil {
 			return false
@@ -553,10 +643,7 @@ func eventMatches(e xdr.ContractEvent, want Event) bool {
 	}
 
 	if want.Data != nil {
-		wv, ok := scVal(want.Data)
-		if !ok || !body.Data.Equals(wv) {
-			return false
-		}
+		return spec.dataMatches(spec.findEvent(body.Topics), body.Data, want.Data)
 	}
 	return true
 }
@@ -618,7 +705,9 @@ func toEvent(e xdr.ContractEvent) Event {
 
 // describeEvents renders the events actually present, so a non-match shows
 // what was there instead of only what was missing.
-func describeEvents(events []xdr.ContractEvent) string {
+//
+// spec, when given, names the fields of the payloads and the topics.
+func describeEvents(events []xdr.ContractEvent, spec *specIndex) string {
 	if len(events) == 0 {
 		return "the transaction emitted no contract events"
 	}
@@ -636,14 +725,50 @@ func describeEvents(events []xdr.ContractEvent) string {
 
 		if body, ok := e.Body.GetV0(); ok {
 			topics := make([]string, 0, len(body.Topics))
-			for _, tpc := range body.Topics {
-				topics = append(topics, describeScVal(tpc))
+			for n, tpc := range body.Topics {
+				topics = append(topics, describeTopic(spec, body.Topics, n, tpc))
 			}
-			fmt.Fprintf(&b, "  topics[%s]  data %s", strings.Join(topics, ", "), describeScVal(body.Data))
+			fmt.Fprintf(&b, "  topics[%s]  data %s",
+				strings.Join(topics, ", "), describeEventData(spec, body.Topics, body.Data))
 		}
 		b.WriteString("\n")
 	}
 	return strings.TrimRight(b.String(), "\n")
+}
+
+// describeTopic renders one topic, naming it when the specification says
+// which parameter it is.
+func describeTopic(spec *specIndex, topics []xdr.ScVal, index int, topic xdr.ScVal) string {
+	rendered := describeScVal(topic)
+	if spec == nil || spec.empty() {
+		return rendered
+	}
+	event := spec.findEvent(topics)
+	if event == nil {
+		return rendered
+	}
+	names := spec.eventTopicNames(event, topics)
+	if index >= len(names) || names[index] == "" {
+		return rendered
+	}
+	return names[index] + "=" + rendered
+}
+
+// describeEventData renders an event's payload, naming its fields when the
+// specification describes them.
+//
+// The XDR type is kept alongside the names, so the reader can see both what
+// the contract called the parts and what the wire calls them.
+func describeEventData(spec *specIndex, topics []xdr.ScVal, data xdr.ScVal) string {
+	if spec == nil || spec.empty() {
+		return describeScVal(data)
+	}
+	event := spec.findEvent(topics)
+	if event == nil {
+		return describeScVal(data)
+	}
+	rendered := spec.describeSpecValue(spec.eventDataType(event), data)
+	return fmt.Sprintf("%s [%s]", rendered, data.Type.String())
 }
 
 // describeWantedEvent renders a matcher, naming which fields were wildcards
@@ -669,14 +794,133 @@ func describeWantedEvent(want Event) string {
 		parts = append(parts, "topics["+strings.Join(topics, ", ")+"]")
 	}
 	if want.Data != nil {
-		if sv, ok := scVal(want.Data); ok {
-			parts = append(parts, "data "+describeScVal(sv))
-		}
+		parts = append(parts, "data "+describeWantedData(want))
 	}
 	if len(parts) == 0 {
 		return "any event"
 	}
 	return strings.Join(parts, "  ")
+}
+
+// describeWantedData renders the payload a matcher wants, with field names
+// when the matcher supplied a specification.
+func describeWantedData(want Event) string {
+	spec := newSpecIndex(want.Spec)
+	if spec.empty() {
+		if sv, ok := scVal(want.Data); ok {
+			return describeScVal(sv)
+		}
+		return fmt.Sprintf("%v", want.Data)
+	}
+
+	// The event the matcher is after is named by its first topic, which is
+	// how a contract's events are named on the wire.
+	var name string
+	for _, topic := range want.Topics {
+		if topic == nil {
+			continue
+		}
+		if sv, ok := scVal(topic); ok {
+			if sym, ok := sv.GetSym(); ok {
+				name = string(sym)
+				break
+			}
+		}
+	}
+	event := spec.event(name)
+	if event == nil {
+		if val, ok := scVal(want.Data); ok {
+			return describeScVal(val)
+		}
+		return fmt.Sprintf("%v", want.Data)
+	}
+	return spec.describeWantedValue(spec.eventDataType(event), want.Data)
+}
+
+// describeSpecHint explains a mismatch that a specification would have
+// explained.
+//
+// A payload of field names cannot be compared with the wire shape, so a
+// matcher that gives one without a specification is asking a question the
+// library cannot answer. Saying so is more useful than a diff against
+// something that was never going to match.
+func describeSpecHint(want Event) string {
+	if want.Spec != nil {
+		return ""
+	}
+	if _, named := want.Data.(map[string]any); !named {
+		return ""
+	}
+	return "\n\nthe payload names fields, so it needs the contract's specification: " +
+		"set Event.Spec to match by field name."
+}
+
+// describeEventDiffs names the fields that differ between the wanted
+// payload and the payloads that are there.
+//
+// The event with the fewest differences is the one the matcher most likely
+// meant, so its differences are the ones worth showing.
+func describeEventDiffs(events []xdr.ContractEvent, want Event, spec *specIndex) string {
+	if spec == nil || spec.empty() || want.Data == nil {
+		return ""
+	}
+
+	var (
+		best    []string
+		bestSet bool
+	)
+	for _, e := range events {
+		body, ok := e.Body.GetV0()
+		if !ok {
+			continue
+		}
+		event := spec.findEvent(body.Topics)
+		if event == nil {
+			continue
+		}
+		diffs := spec.specDiff(spec.eventDataType(event), want.Data, body.Data)
+		if len(diffs) == 0 {
+			continue
+		}
+		if !bestSet || len(diffs) < len(best) {
+			best = diffs
+			bestSet = true
+		}
+	}
+	if !bestSet {
+		return describeUnknownEvent(events, spec)
+	}
+
+	var b strings.Builder
+	b.WriteString("\n\ndifferences from the closest event:")
+	for _, diff := range best {
+		b.WriteString("\n  ")
+		b.WriteString(diff)
+	}
+	return b.String()
+}
+
+// describeUnknownEvent says that the specification does not describe the
+// event that was emitted, which is a different problem from a payload that
+// does not match.
+func describeUnknownEvent(events []xdr.ContractEvent, spec *specIndex) string {
+	for _, e := range events {
+		body, ok := e.Body.GetV0()
+		if !ok {
+			continue
+		}
+		for _, topic := range body.Topics {
+			sym, ok := topic.GetSym()
+			if !ok {
+				continue
+			}
+			if spec.event(string(sym)) != nil {
+				continue
+			}
+			return fmt.Sprintf("\n\nthe contract specification does not describe the event %q", string(sym))
+		}
+	}
+	return ""
 }
 
 // describeScVal renders an ScVal compactly for a one-line event listing.
