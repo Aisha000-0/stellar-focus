@@ -104,6 +104,8 @@ func TestEveryMirrorReportsFatally(t *testing.T) {
 		{"Payment", func(tb *faketb.TB) { require.Payment(tb, "bad", 0, "G", 1, "native") }},
 		{"CreateAccount", func(tb *faketb.TB) { require.CreateAccount(tb, "bad", 0, "G", 1) }},
 		{"ChangeTrust", func(tb *faketb.TB) { require.ChangeTrust(tb, "bad", 0, "native", 1) }},
+		{"SorobanResources", func(tb *faketb.TB) { require.SorobanResources(tb, "bad", 1, 1, 1) }},
+		{"ResourceFee", func(tb *faketb.TB) { require.ResourceFee(tb, "bad", 1) }},
 		{"ReturnValue", func(tb *faketb.TB) { require.ReturnValue(tb, "bad", "x") }},
 		{"ContractTrapped", func(tb *faketb.TB) { require.ContractTrapped(tb, "bad") }},
 		{"ContractTrappedWith", func(tb *faketb.TB) {

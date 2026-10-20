@@ -234,6 +234,79 @@ func AssertContractTrapped(t TB, result Value) bool {
 	return contractTrapped(t, "AssertContractTrapped", result)
 }
 
+// AssertSorobanResources checks that a Soroban transaction's resource limits
+// fit inside the given budgets.
+//
+// The limits are the ones the transaction bids: CPU instructions, bytes read
+// from the ledger, and bytes written back to it. They are budgets rather than
+// measurements — a transaction asks for what it thinks it needs, and the
+// network charges it for that — so this is the assertion a regression suite
+// uses to keep a contract's cost from creeping up.
+//
+// A budget of zero means the dimension is not checked, which is how a test
+// pins the instructions without pinning the memory.
+//
+// A failure names every dimension that went over its budget, and then shows
+// the limits the transaction asked for.
+func AssertSorobanResources(t TB, envelope Value, maxInstructions uint32, readBytes, writeBytes uint32) bool {
+	t.Helper()
+	const assertion = "AssertSorobanResources"
+
+	data, ok := sorobanData(t, assertion, envelope)
+	if !ok {
+		return false
+	}
+
+	var over []string
+	if maxInstructions > 0 && uint32(data.Resources.Instructions) > maxInstructions {
+		over = append(over, fmt.Sprintf("CPU instructions are %d, budget is %d",
+			data.Resources.Instructions, maxInstructions))
+	}
+	if readBytes > 0 && uint32(data.Resources.DiskReadBytes) > readBytes {
+		over = append(over, fmt.Sprintf("read bytes are %d, budget is %d",
+			data.Resources.DiskReadBytes, readBytes))
+	}
+	if writeBytes > 0 && uint32(data.Resources.WriteBytes) > writeBytes {
+		over = append(over, fmt.Sprintf("write bytes are %d, budget is %d",
+			data.Resources.WriteBytes, writeBytes))
+	}
+	if len(over) == 0 {
+		return true
+	}
+
+	t.Errorf("%s: %s\n\n%s",
+		assertion, strings.Join(over, "; "),
+		indent(describeSorobanResources(data.Resources), "  "))
+	return false
+}
+
+// AssertResourceFee checks the refundable resource fee a Soroban transaction
+// bids, in stroops.
+//
+// The fee is what the sender is willing to pay for the resources the
+// transaction reserves; the unused part is refunded once the transaction
+// lands. It is a bid rather than a charge, so this is the assertion that
+// pins what a contract call costs the caller.
+//
+// The fee is in XLM, so the failure message shows both units.
+func AssertResourceFee(t TB, envelope Value, wantFee int64) bool {
+	t.Helper()
+	const assertion = "AssertResourceFee"
+
+	data, ok := sorobanData(t, assertion, envelope)
+	if !ok {
+		return false
+	}
+
+	got := int64(data.ResourceFee)
+	if got == wantFee {
+		return true
+	}
+
+	t.Errorf("%s: resource fee is %s, want %s", assertion, stroops(got), stroops(wantFee))
+	return false
+}
+
 // Events returns the contract events in a meta, as an escape hatch for checks
 // this package does not provide. It reports a test failure and returns nil
 // when the meta cannot be read.
@@ -290,6 +363,48 @@ func contractEvents(t TB, assertion string, meta Value) ([]xdr.ContractEvent, bo
 		return nil, false
 	}
 	return soroban.Events, true
+}
+
+// sorobanData returns the Soroban transaction data of an envelope.
+//
+// The resource limits and the resource fee live in the transaction's
+// extension, so they are only there for a contract invocation; an envelope
+// without them is reported rather than treated as one that happens to ask
+// for nothing.
+func sorobanData(t TB, assertion string, envelope Value) (*xdr.SorobanTransactionData, bool) {
+	t.Helper()
+
+	env, _, ok := envelopeFrom(t, assertion, envelope)
+	if !ok {
+		return nil, false
+	}
+
+	var data *xdr.SorobanTransactionData
+	if !guard(t, assertion, func() {
+		switch {
+		case env.V1 != nil:
+			data = env.V1.Tx.Ext.SorobanData
+		case env.V0 != nil, env.FeeBump != nil:
+			// Neither form carries a transaction extension.
+			data = nil
+		}
+	}) {
+		return nil, false
+	}
+	if data == nil {
+		t.Errorf("%s: this transaction carries no Soroban data.\n"+
+			"Resource limits and the resource fee live in the Soroban transaction data, which only "+
+			"a contract invocation has (was this transaction a contract call?)", assertion)
+		return nil, false
+	}
+	return data, true
+}
+
+// describeSorobanResources renders the resource limits a transaction bids, so
+// a failure shows what was asked for rather than only what was allowed.
+func describeSorobanResources(r xdr.SorobanResources) string {
+	return fmt.Sprintf("resource limits: %d CPU instructions, %d read bytes, %d write bytes",
+		r.Instructions, r.DiskReadBytes, r.WriteBytes)
 }
 
 // eventMatches reports whether an event satisfies a matcher.

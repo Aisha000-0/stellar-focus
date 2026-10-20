@@ -412,6 +412,8 @@ func TestAssertionsNeverPanic(t *testing.T) {
 		focus.AssertReturnValue(tb, v, "x")
 		focus.AssertContractTrapped(tb, v)
 		focus.AssertContractTrappedWith(tb, v, "Error(Contract, #4)")
+		focus.AssertSorobanResources(tb, v, 1, 1, 1)
+		focus.AssertResourceFee(tb, v, 1)
 		focus.AssertPayment(tb, v, 0, "G", 1, "native")
 		focus.AssertCreateAccount(tb, v, 0, "G", 1)
 		focus.AssertChangeTrust(tb, v, 0, "native", 1)

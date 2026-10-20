@@ -262,6 +262,19 @@ func ChangeTrust(t focus.TB, envelope focus.Value, opIndex int, wantAsset string
 	focus.AssertChangeTrust(fatal(t), envelope, opIndex, wantAsset, wantLimit)
 }
 
+// SorobanResources is focus.AssertSorobanResources, stopping the test on
+// failure.
+func SorobanResources(t focus.TB, envelope focus.Value, maxInstructions uint32, readBytes, writeBytes uint32) {
+	t.Helper()
+	focus.AssertSorobanResources(fatal(t), envelope, maxInstructions, readBytes, writeBytes)
+}
+
+// ResourceFee is focus.AssertResourceFee, stopping the test on failure.
+func ResourceFee(t focus.TB, envelope focus.Value, wantFee int64) {
+	t.Helper()
+	focus.AssertResourceFee(fatal(t), envelope, wantFee)
+}
+
 // ReturnValue is focus.AssertReturnValue, stopping the test on failure.
 func ReturnValue(t focus.TB, meta focus.Value, want focus.Value) {
 	t.Helper()

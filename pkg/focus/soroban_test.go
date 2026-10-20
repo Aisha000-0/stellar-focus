@@ -288,3 +288,130 @@ func TestAssertEventsEqualShowsBothSides(t *testing.T) {
 		t.Errorf("the open payload is not shown as a wildcard:\n%s", msg)
 	}
 }
+
+func TestAssertSorobanResources(t *testing.T) {
+	t.Parallel()
+
+	env := sorobanEnvelope(t, 1000, 200, 300, 100_000_000)
+
+	t.Run("within the budget", func(t *testing.T) {
+		t.Parallel()
+
+		tb := faketb.New()
+		if !focus.AssertSorobanResources(tb, env, 1000, 200, 300) {
+			t.Errorf("the resources were reported as over budget:\n%s", tb.Output())
+		}
+	})
+
+	t.Run("a zero budget is not checked", func(t *testing.T) {
+		t.Parallel()
+
+		tb := faketb.New()
+		if !focus.AssertSorobanResources(tb, env, 0, 0, 0) {
+			t.Errorf("an unchecked dimension was reported:\n%s", tb.Output())
+		}
+	})
+
+	t.Run("the instructions are over budget", func(t *testing.T) {
+		t.Parallel()
+
+		tb := faketb.New()
+		if focus.AssertSorobanResources(tb, env, 999, 200, 300) {
+			t.Fatal("the assertion passed with the instructions over budget")
+		}
+		msg, _ := tb.Message()
+		for _, want := range []string{"AssertSorobanResources", "CPU instructions are 1000, budget is 999"} {
+			if !strings.Contains(msg, want) {
+				t.Errorf("message does not contain %q:\n%s", want, msg)
+			}
+		}
+	})
+
+	t.Run("every dimension over budget is named", func(t *testing.T) {
+		t.Parallel()
+
+		tb := faketb.New()
+		focus.AssertSorobanResources(tb, env, 1, 1, 1)
+		msg, _ := tb.Message()
+		for _, want := range []string{
+			"CPU instructions are 1000, budget is 1",
+			"read bytes are 200, budget is 1",
+			"write bytes are 300, budget is 1",
+		} {
+			if !strings.Contains(msg, want) {
+				t.Errorf("message does not contain %q:\n%s", want, msg)
+			}
+		}
+	})
+
+	t.Run("the limits are shown", func(t *testing.T) {
+		t.Parallel()
+
+		tb := faketb.New()
+		focus.AssertSorobanResources(tb, env, 1, 200, 300)
+		msg, _ := tb.Message()
+		if !strings.Contains(msg, "1000 CPU instructions") {
+			t.Errorf("the message does not show the limits the transaction asked for:\n%s", msg)
+		}
+	})
+
+	t.Run("a transaction with no Soroban data", func(t *testing.T) {
+		t.Parallel()
+
+		tb := faketb.New()
+		if focus.AssertSorobanResources(tb, buildEnvelope(t), 1, 1, 1) {
+			t.Fatal("the assertion passed on a transaction with no Soroban data")
+		}
+		msg, _ := tb.Message()
+		if !strings.Contains(msg, "no Soroban data") {
+			t.Errorf("the message does not explain the mistake:\n%s", msg)
+		}
+	})
+}
+
+func TestAssertResourceFee(t *testing.T) {
+	t.Parallel()
+
+	env := sorobanEnvelope(t, 1000, 200, 300, 100_000_000)
+
+	t.Run("the fee matches", func(t *testing.T) {
+		t.Parallel()
+
+		tb := faketb.New()
+		if !focus.AssertResourceFee(tb, env, 100_000_000) {
+			t.Errorf("the resource fee did not match:\n%s", tb.Output())
+		}
+	})
+
+	t.Run("the fee differs", func(t *testing.T) {
+		t.Parallel()
+
+		tb := faketb.New()
+		if focus.AssertResourceFee(tb, env, 50_000_000) {
+			t.Fatal("the assertion passed with the wrong resource fee")
+		}
+		msg, _ := tb.Message()
+		for _, want := range []string{
+			"AssertResourceFee",
+			"resource fee is 100000000 (10.0000000 XLM)",
+			"want 50000000 (5.0000000 XLM)",
+		} {
+			if !strings.Contains(msg, want) {
+				t.Errorf("message does not contain %q:\n%s", want, msg)
+			}
+		}
+	})
+
+	t.Run("a transaction with no Soroban data", func(t *testing.T) {
+		t.Parallel()
+
+		tb := faketb.New()
+		if focus.AssertResourceFee(tb, buildEnvelope(t), 1) {
+			t.Fatal("the assertion passed on a transaction with no Soroban data")
+		}
+		msg, _ := tb.Message()
+		if !strings.Contains(msg, "no Soroban data") {
+			t.Errorf("the message does not explain the mistake:\n%s", msg)
+		}
+	})
+}
