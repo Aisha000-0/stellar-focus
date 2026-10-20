@@ -62,6 +62,8 @@ Working and tested:
 - `require` mirrors with `Fatalf` semantics, with 100% parity enforced by an
   AST audit (`pkg/focus/require/audit.go`)
 - Golden files in reviewable JSON, with `-focus.update`
+- Golden comparisons that normalize volatile sequence and time fields by
+  default, with an opt-out, plus a benchmark of the structural comparison path
 - Fixtures in JSON, YAML or plain text — chosen by file extension, or with
   `WithFormat` — all three lossless, deterministic and whitespace-normalized,
   with the text form using lens's dotted-path vocabulary
