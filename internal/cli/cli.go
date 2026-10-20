@@ -7,11 +7,14 @@
 package cli
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -82,6 +85,7 @@ precedence.`,
 		newCaptureCmd(cfg, stdout, stderr),
 		newLedgerKeyCmd(stdout),
 		newVerifyCmd(cfg, stdout, stderr),
+		newRefreshCmd(cfg, stdout, stderr),
 		newVersionCmd(stdout),
 	)
 	return root
@@ -231,9 +235,268 @@ func writeFixtures(
 	return nil
 }
 
+// fixtureLedger reports the ledger a fixture was captured at, for the capture
+// summary.
 func fixtureLedger(f *golden.Fixture) uint32 {
 	if f.Captured == nil {
 		return 0
 	}
 	return f.Captured.Ledger
+}
+
+// newRefreshCmd builds the command that re-renders the decoded section of
+// stored fixtures.
+//
+// The refresh belongs to the fixture, not to the test that produced it: the
+// XDR is the source of truth, and the decoded tree beside it is what a human
+// reads. When the formatter improves, that tree goes stale, and the only way
+// to fix it today is to re-record every fixture — which re-records the data
+// too. This command re-renders the tree and leaves the data alone.
+func newRefreshCmd(cfg *config, stdout, stderr io.Writer) *cobra.Command {
+	var dryRun bool
+
+	cmd := &cobra.Command{
+		Use:   "refresh [paths...]",
+		Short: "Re-render the decoded section of stored fixtures",
+		Long: `Re-render the decoded section of every fixture from the XDR it stores.
+
+The XDR is the source of truth; the decoded tree beside it is what a human
+reads in a pull request. When the formatter improves, or the protocol gains
+a field, that tree goes stale — and re-recording the fixtures to fix it
+would re-record the data too. This command re-renders only the decoded
+section, leaving the XDR, the type, the description and the capture
+provenance as they are.
+
+Paths may be files or directories. With no path, testdata is refreshed.
+
+With --dry-run nothing is written: the difference each fixture would get is
+printed instead.`,
+		Example: `  focus refresh testdata/
+  focus refresh testdata/ --dry-run`,
+		Args: cobra.ArbitraryArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if len(args) == 0 {
+				args = []string{defaultVerifyDir}
+			}
+
+			paths, err := collectFixtures(args)
+			if err != nil {
+				return failureErrorf("%v", err)
+			}
+			if len(paths) == 0 {
+				return failureErrorf("no fixture files found in %s", strings.Join(args, ", "))
+			}
+
+			var updated, unchanged, errored int
+			for _, path := range paths {
+				changed, diff, err := refreshFixture(path, dryRun)
+				if err != nil {
+					fmt.Fprintf(stderr, "%-40s ERROR   %v\n", path, err)
+					errored++
+					continue
+				}
+				if changed {
+					word := "updated"
+					if dryRun {
+						word = "would change"
+					}
+					fmt.Fprintf(stdout, "%-40s %s\n", path, word)
+					if diff != "" {
+						fmt.Fprint(stdout, diff)
+					}
+					updated++
+					continue
+				}
+				fmt.Fprintf(stdout, "%-40s unchanged\n", path)
+				unchanged++
+			}
+
+			fmt.Fprintf(stdout, "\n%d checked: %d %s, %d unchanged",
+				len(paths), updated, refreshVerb(dryRun), unchanged)
+			if errored > 0 {
+				fmt.Fprintf(stdout, ", %d errored", errored)
+			}
+			fmt.Fprintln(stdout)
+
+			if errored > 0 {
+				return failureErrorf("%d fixture(s) could not be refreshed", errored)
+			}
+			return nil
+		},
+	}
+
+	cmd.Flags().BoolVar(&dryRun, "dry-run", false,
+		"show what would change without writing anything")
+
+	return cmd
+}
+
+// refreshVerb names what the command did, which is not the same word in a
+// dry run as in a real one.
+func refreshVerb(dryRun bool) string {
+	if dryRun {
+		return "would change"
+	}
+	return "updated"
+}
+
+// refreshFixture re-renders one fixture, or — in a dry run — works out the
+// difference it would get and writes nothing.
+//
+// It reports whether the fixture changed, and the diff of that change when
+// there is one to show.
+func refreshFixture(path string, dryRun bool) (bool, string, error) {
+	if !dryRun {
+		changed, err := golden.Refresh(path)
+		return changed, "", err
+	}
+
+	fixture, err := golden.Load(path)
+	if err != nil {
+		return false, "", err
+	}
+	decoded, err := golden.RefreshedDecoded(fixture)
+	if err != nil {
+		return false, "", err
+	}
+
+	before, err := indentJSON(fixture.Decoded)
+	if err != nil {
+		return false, "", err
+	}
+	after, err := indentJSON(decoded)
+	if err != nil {
+		return false, "", err
+	}
+	if before == after {
+		return false, "", nil
+	}
+	return true, diffLines(before, after), nil
+}
+
+// indentJSON re-indents a JSON document, so two renderings of the same tree
+// can be compared line by line.
+//
+// The stored section carries the indentation of the file it sits in, and the
+// fresh one carries the indentation of the formatter; comparing them without
+// this step would report every line as changed.
+func indentJSON(data []byte) (string, error) {
+	if len(bytes.TrimSpace(data)) == 0 {
+		return "", nil
+	}
+	var buf bytes.Buffer
+	if err := json.Indent(&buf, data, "", "  "); err != nil {
+		return "", fmt.Errorf("reading the decoded section: %w", err)
+	}
+	return buf.String(), nil
+}
+
+// diffLines renders the lines that differ between two texts.
+//
+// The diff is computed over the longest common subsequence, so a line that
+// was added or removed is reported as such rather than as a change to every
+// line after it.
+func diffLines(before, after string) string {
+	oldLines := strings.Split(before, "\n")
+	newLines := strings.Split(after, "\n")
+
+	var b strings.Builder
+	for _, line := range changedLines(oldLines, newLines) {
+		switch line.kind {
+		case lineRemoved:
+			fmt.Fprintf(&b, "  - %s\n", line.text)
+		case lineAdded:
+			fmt.Fprintf(&b, "  + %s\n", line.text)
+		}
+	}
+	return b.String()
+}
+
+// lineKind says what a diff line is.
+type lineKind int
+
+const (
+	// lineRemoved is a line that was in the old text and not in the new one.
+	lineRemoved lineKind = iota
+	// lineAdded is a line that is in the new text and not in the old one.
+	lineAdded
+)
+
+// diffLine is one line of a diff.
+type diffLine struct {
+	kind lineKind
+	text string
+}
+
+// maxDiffCells bounds the diff table. A fixture large enough to exceed it is
+// compared line by line instead, which is rougher but never allocates a
+// table the size of the file.
+const maxDiffCells = 4_000_000
+
+// changedLines returns the lines that differ between two texts, oldest
+// first.
+func changedLines(oldLines, newLines []string) []diffLine {
+	if len(oldLines)*len(newLines) > maxDiffCells {
+		return changedLinesLineByLine(oldLines, newLines)
+	}
+
+	// lcs[i][j] is the length of the longest common subsequence of
+	// oldLines[i:] and newLines[j:].
+	lcs := make([][]int, len(oldLines)+1)
+	for i := range lcs {
+		lcs[i] = make([]int, len(newLines)+1)
+	}
+	for i := len(oldLines) - 1; i >= 0; i-- {
+		for j := len(newLines) - 1; j >= 0; j-- {
+			switch {
+			case oldLines[i] == newLines[j]:
+				lcs[i][j] = lcs[i+1][j+1] + 1
+			case lcs[i+1][j] >= lcs[i][j+1]:
+				lcs[i][j] = lcs[i+1][j]
+			default:
+				lcs[i][j] = lcs[i][j+1]
+			}
+		}
+	}
+
+	var out []diffLine
+	i, j := 0, 0
+	for i < len(oldLines) && j < len(newLines) {
+		switch {
+		case oldLines[i] == newLines[j]:
+			i++
+			j++
+		case lcs[i+1][j] >= lcs[i][j+1]:
+			out = append(out, diffLine{kind: lineRemoved, text: oldLines[i]})
+			i++
+		default:
+			out = append(out, diffLine{kind: lineAdded, text: newLines[j]})
+			j++
+		}
+	}
+	for ; i < len(oldLines); i++ {
+		out = append(out, diffLine{kind: lineRemoved, text: oldLines[i]})
+	}
+	for ; j < len(newLines); j++ {
+		out = append(out, diffLine{kind: lineAdded, text: newLines[j]})
+	}
+	return out
+}
+
+// changedLinesLineByLine compares two texts without a diff table, for texts
+// too large for one.
+func changedLinesLineByLine(oldLines, newLines []string) []diffLine {
+	var out []diffLine
+	for i := 0; i < len(oldLines) || i < len(newLines); i++ {
+		switch {
+		case i >= len(oldLines):
+			out = append(out, diffLine{kind: lineAdded, text: newLines[i]})
+		case i >= len(newLines):
+			out = append(out, diffLine{kind: lineRemoved, text: oldLines[i]})
+		case oldLines[i] != newLines[i]:
+			out = append(out, diffLine{kind: lineRemoved, text: oldLines[i]})
+			out = append(out, diffLine{kind: lineAdded, text: newLines[i]})
+		}
+	}
+	return out
 }
