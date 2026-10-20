@@ -21,6 +21,15 @@ Working and tested:
   explanation and hint; operation result codes can be checked by short name,
   and an unknown code or an XDR constant name is called out as such
 - Soroban: event matching, event counts, return values, contract traps
+- Ordered event sequences: `AssertEventsEqual` pins the whole list of contract
+  events — the count, the order and each event's payload — and a failure prints
+  the event that deviated beside the event that was wanted, with the options
+  that relaxed the comparison named
+- Soroban resource budgets and the refundable resource fee, read from the
+  transaction's `SorobanTransactionData`
+- Typed operation assertions: what a payment pays and to whom, what starting
+  balance an account is created with, and what limit a trustline is changed to
+  — with amounts in both stroops and XLM
 - Contract traps explained from the host's own diagnostics: the result proves
   the trap and the diagnostic stream says why — `Error(Contract, #4)`,
   `Error(WasmVm, InvalidAction)` and the rest — read from a `getTransaction`
@@ -69,6 +78,10 @@ Working and tested:
   directory discovery and table-driven assertion running, plus deterministic
   export to Go fuzz seed corpora
 - `focus capture` and `focus verify` against a live network
+- Narrowed verification: `focus verify --since`, `--filter` and `--drifted-only`,
+  so a repository with hundreds of fixtures can be re-checked without
+  re-fetching all of them, with the fixtures left out reported rather than
+  quietly passing
 - Unified CLI configuration: flags, `FOCUS_*` environment variables and a
   config file, with one documented precedence order and validation before any
   request (`internal/cli/flags.go`)
