@@ -441,9 +441,17 @@ func TestAssertionsNeverPanic(t *testing.T) {
 		focus.AssertMemoIDEqual(tb, v, 0)
 		focus.AssertMemoHashEqual(tb, v, "")
 		focus.AssertMemoReturnEqual(tb, v, "")
+		focus.AssertMemoText(tb, v, "")
+		focus.AssertMemoID(tb, v, 0)
+		focus.AssertMemoHash(tb, v, [32]byte{})
+		focus.AssertNoMemo(tb, v)
 		focus.AssertOperationSequence(tb, v, nil)
+		focus.AssertOperationSourceAccount(tb, v, 0, "G")
 		focus.AssertSignaturesPresent(tb, v, "G")
 		focus.AssertSignatureThreshold(tb, v, 1, "G")
+		focus.AssertSignatureHints(tb, v, [4]byte{})
+		focus.AssertSignedBy(tb, v, "G")
+		focus.AssertContractError(tb, v, xdr.ScErrorTypeSceContract, 4)
 		focus.AssertDiagnosticEventOrder(tb, v, []focus.DiagnosticEventMatch{{Kind: focus.DiagnosticFnCall}})
 		focus.AssertDiagnosticEventTimeline(tb, v, focus.DiagnosticTimeline{
 			Ledger:   3966820,
