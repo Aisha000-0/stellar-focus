@@ -342,6 +342,46 @@ func TestResolveEndpoint(t *testing.T) {
 	}
 }
 
+// TestResolveHorizonEndpoint checks that the Horizon defaults are their
+// own, since a Horizon endpoint and an RPC endpoint are different
+// services.
+func TestResolveHorizonEndpoint(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		network  string
+		override string
+		want     string
+		wantErr  bool
+	}{
+		{"testnet default", capture.NetworkTestnet, "", capture.DefaultHorizonEndpoints[capture.NetworkTestnet], false},
+		{"mainnet default", capture.NetworkMainnet, "", capture.DefaultHorizonEndpoints[capture.NetworkMainnet], false},
+		{"override wins", capture.NetworkTestnet, "http://localhost:8000", "http://localhost:8000", false},
+		{"unknown network", "wonderland", "", "", true},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			got, err := capture.ResolveHorizonEndpoint(tc.network, tc.override)
+			if tc.wantErr {
+				if err == nil {
+					t.Fatal("ResolveHorizonEndpoint() error = nil, want an error")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("ResolveHorizonEndpoint() error = %v", err)
+			}
+			if got != tc.want {
+				t.Errorf("ResolveHorizonEndpoint() = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
 // TestDefaultIsTestnet guards against a tool that reaches for mainnet unless
 // told otherwise.
 func TestDefaultIsTestnet(t *testing.T) {

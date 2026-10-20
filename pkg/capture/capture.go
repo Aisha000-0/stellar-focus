@@ -32,6 +32,17 @@ var DefaultEndpoints = map[string]string{
 	NetworkMainnet: "https://mainnet.sorobanrpc.com",
 }
 
+// DefaultHorizonEndpoints maps a network name to its public Horizon
+// endpoint.
+//
+// Horizon is a separate service from Soroban RPC, so it has its own
+// defaults: a capture that asks for Horizon and gets an RPC URL would fail
+// in a way that took a while to understand.
+var DefaultHorizonEndpoints = map[string]string{
+	NetworkTestnet: "https://horizon-testnet.stellar.org",
+	NetworkMainnet: "https://horizon.stellar.org",
+}
+
 // ErrNotFound is returned when the requested item is not on the network, or
 // has aged out of the endpoint's retention window.
 var ErrNotFound = errors.New("not found on this network")
@@ -197,6 +208,20 @@ func ResolveEndpoint(network, override string) (string, error) {
 		return override, nil
 	}
 	url, ok := DefaultEndpoints[network]
+	if !ok {
+		return "", fmt.Errorf(
+			"unknown network %q; use testnet or mainnet, or give an explicit --rpc-url", network)
+	}
+	return url, nil
+}
+
+// ResolveHorizonEndpoint picks the Horizon URL for a network, honouring an
+// explicit override.
+func ResolveHorizonEndpoint(network, override string) (string, error) {
+	if override != "" {
+		return override, nil
+	}
+	url, ok := DefaultHorizonEndpoints[network]
 	if !ok {
 		return "", fmt.Errorf(
 			"unknown network %q; use testnet or mainnet, or give an explicit --rpc-url", network)
