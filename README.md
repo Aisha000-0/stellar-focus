@@ -261,6 +261,35 @@ force: false
 An explicit `--config` must exist; a missing `.focus.yaml` is simply ignored.
 Invalid settings fail before any request is made.
 
+### Refreshing fixtures
+
+The XDR in a fixture is the source of truth; the decoded tree beside it is
+what a human reads. When `stellar-xdr-lens` improves its formatting, or the
+protocol gains a field, that tree goes stale — and the only way to fix it
+today is to re-record every fixture, which re-records the data too.
+
+```sh
+# Re-render the decoded section of every fixture, leaving the XDR alone
+focus refresh testdata/
+
+# See what would change, without writing anything
+focus refresh testdata/ --dry-run
+```
+
+```console
+$ focus refresh testdata/
+testdata/envelope.golden.json            updated
+testdata/result.golden.json              unchanged
+
+2 checked: 1 updated, 1 unchanged
+```
+
+The format, the type, the description, the XDR and the capture provenance all
+keep their values; only the decoded section is rewritten. A fixture that is
+already current is not rewritten at all, so the command is safe to run over a
+whole `testdata` directory and leaves an empty pull request when there is
+nothing to fix.
+
 ## Snapshots
 
 Failure-message formatting is snapshotted so a layout change is a reviewable

@@ -261,3 +261,109 @@ func TestUpdateFlagIsRegistered(t *testing.T) {
 	// Update() returning false without panicking is the check; the flag is
 	// registered at package init and would panic on a duplicate name.
 }
+
+// TestRefreshRendersTheDecodedSectionAgain is what the refresh is for: the
+// decoded tree of a stored fixture goes stale when the formatter changes, and
+// re-recording the fixture to fix it would re-record the data too.
+func TestRefreshRendersTheDecodedSectionAgain(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "env.golden.json")
+
+	fixture, err := golden.Build(envelope(t), "TransactionEnvelope", "a failed Soroban call", nil)
+	if err != nil {
+		t.Fatalf("Build() error = %v", err)
+	}
+	fixture.Decoded = json.RawMessage(`{"stale": true}`)
+	if err := golden.Save(path, fixture); err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+
+	changed, err := golden.Refresh(path)
+	if err != nil {
+		t.Fatalf("Refresh() error = %v", err)
+	}
+	if !changed {
+		t.Error("Refresh() reported no change for a stale fixture")
+	}
+
+	refreshed, err := golden.Load(path)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if strings.Contains(string(refreshed.Decoded), "stale") {
+		t.Errorf("the decoded section was not refreshed:\n%s", refreshed.Decoded)
+	}
+	// Everything but the decoded section keeps its value.
+	if refreshed.XDR != fixture.XDR {
+		t.Error("the refresh changed the XDR")
+	}
+	if refreshed.Type != fixture.Type {
+		t.Errorf("the refresh changed the type: %q", refreshed.Type)
+	}
+	if refreshed.Description != fixture.Description {
+		t.Errorf("the refresh changed the description: %q", refreshed.Description)
+	}
+}
+
+// TestRefreshLeavesACurrentFixtureAlone checks that a refresh is safe to run
+// over a whole directory: nothing changes, so nothing is written.
+func TestRefreshLeavesACurrentFixtureAlone(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "env.golden.json")
+
+	fixture, err := golden.Build(envelope(t), "TransactionEnvelope", "", nil)
+	if err != nil {
+		t.Fatalf("Build() error = %v", err)
+	}
+	if err := golden.Save(path, fixture); err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+	before, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("reading file: %v", err)
+	}
+
+	changed, err := golden.Refresh(path)
+	if err != nil {
+		t.Fatalf("Refresh() error = %v", err)
+	}
+	if changed {
+		t.Error("Refresh() changed a fixture that was already current")
+	}
+
+	after, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("reading file: %v", err)
+	}
+	if string(before) != string(after) {
+		t.Error("the file was rewritten even though nothing changed")
+	}
+}
+
+// TestRefreshReportsAFixtureItCannotDecode checks that a fixture whose XDR
+// does not decode is reported rather than quietly left stale.
+func TestRefreshReportsAFixtureItCannotDecode(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "broken.golden.json")
+
+	fixture, err := golden.Build(envelope(t), "TransactionEnvelope", "", nil)
+	if err != nil {
+		t.Fatalf("Build() error = %v", err)
+	}
+	fixture.XDR = "!!! not xdr !!!"
+	if err := golden.Save(path, fixture); err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+
+	if _, err := golden.Refresh(path); err == nil {
+		t.Fatal("Refresh() returned no error for a fixture it could not decode")
+	} else if !strings.Contains(err.Error(), "decoding") {
+		t.Errorf("the error does not say what went wrong: %v", err)
+	}
+}

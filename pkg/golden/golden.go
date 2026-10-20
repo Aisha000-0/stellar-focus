@@ -25,6 +25,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/stellar-optics/stellar-xdr-lens/pkg/lens"
 	lensformat "github.com/stellar-optics/stellar-xdr-lens/pkg/lens/format"
 
 	"github.com/stellar-optics/stellar-focus/pkg/focus"
@@ -232,14 +233,97 @@ func Build(v focus.Value, typeName, description string, provenance *Provenance) 
 
 	// The decoded section is lens's own JSON, so it matches what
 	// `lens decode --json` prints for the same payload.
+	rendered, err := renderDecoded(decoded)
+	if err != nil {
+		return nil, err
+	}
+	fixture.Decoded = rendered
+
+	return fixture, nil
+}
+
+// renderDecoded renders a decoded value as the JSON tree a fixture stores.
+func renderDecoded(decoded *lens.Value) (json.RawMessage, error) {
 	var buf bytes.Buffer
 	f := lensformat.NewJSONFormatter(lensformat.WithIndent("  "))
 	if err := f.Format(&buf, decoded); err != nil {
 		return nil, fmt.Errorf("rendering decoded form: %w", err)
 	}
-	fixture.Decoded = json.RawMessage(bytes.TrimSpace(buf.Bytes()))
+	return json.RawMessage(bytes.TrimSpace(buf.Bytes())), nil
+}
 
-	return fixture, nil
+// Refresh re-renders the decoded section of a fixture from the XDR it stores.
+//
+// The XDR is the source of truth and the decoded tree beside it is what a
+// human reads in a pull request. When the formatter improves, or the
+// protocol gains a field, that tree goes stale — and re-recording the
+// fixtures to fix it would re-record the data too. Refresh touches only the
+// decoded section: the format, the type, the description, the XDR and the
+// capture provenance keep their values.
+//
+// It reports whether the file on disk changed. A fixture whose decoded
+// section is already current is left alone, so the command is safe to run
+// over a whole testdata directory.
+func Refresh(path string) (bool, error) {
+	format := FormatForPath(path)
+
+	fixture, err := LoadAs(path, format)
+	if err != nil {
+		return false, err
+	}
+
+	decoded, err := RefreshedDecoded(fixture)
+	if err != nil {
+		return false, err
+	}
+
+	refreshed := *fixture
+	refreshed.Decoded = decoded
+
+	serializer, err := SerializerFor(format)
+	if err != nil {
+		return false, err
+	}
+	data, err := serializer.Marshal(&refreshed)
+	if err != nil {
+		return false, fmt.Errorf("rendering %s: %w", path, err)
+	}
+
+	current, err := os.ReadFile(path)
+	if err != nil {
+		return false, err
+	}
+	if bytes.Equal(current, data) {
+		return false, nil
+	}
+
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		return false, fmt.Errorf("writing %s: %w", path, err)
+	}
+	return true, nil
+}
+
+// RefreshedDecoded returns the decoded section a fixture would carry after a
+// refresh, without writing anything.
+//
+// It is what a dry run shows: the tree the fixture would have, next to the
+// one it has.
+func RefreshedDecoded(f *Fixture) (json.RawMessage, error) {
+	if f == nil {
+		return nil, errors.New("fixture is nil")
+	}
+	if f.Type == "" {
+		return nil, errors.New("fixture has no type, so there is nothing to decode")
+	}
+	if strings.TrimSpace(f.XDR) == "" {
+		return nil, errors.New("fixture has no XDR, so there is nothing to decode")
+	}
+
+	decoded, err := lens.DecodeAs(f.XDR, f.Type)
+	if err != nil {
+		return nil, fmt.Errorf("decoding %s: %w", f.Type, err)
+	}
+	return renderDecoded(decoded)
 }
 
 // Load reads a golden file, choosing the format from its extension. An

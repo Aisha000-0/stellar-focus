@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -230,6 +231,157 @@ func TestUnknownNetworkIsRejectedBeforeAnyRequest(t *testing.T) {
 	if src.Calls != 0 {
 		t.Error("a request was made despite the unknown network")
 	}
+}
+
+// TestRefreshRewritesOnlyTheDecodedSection is the promise the command makes:
+// the XDR is the source of truth, so a refresh may not touch it.
+func TestRefreshRewritesOnlyTheDecodedSection(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "envelope.golden.json")
+
+	fixture := staleFixture(t)
+	if err := golden.Save(path, fixture); err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+
+	stdout, _, err := run(t, "refresh", dir)
+	if err != nil {
+		t.Fatalf("refresh failed: %v", err)
+	}
+	if !strings.Contains(stdout, "updated") {
+		t.Errorf("refresh did not report the update:\n%s", stdout)
+	}
+
+	refreshed, err := golden.Load(path)
+	if err != nil {
+		t.Fatalf("loading the refreshed fixture: %v", err)
+	}
+	if refreshed.XDR != fixture.XDR {
+		t.Error("the refresh changed the XDR")
+	}
+	if refreshed.Type != fixture.Type {
+		t.Errorf("the refresh changed the type: %q", refreshed.Type)
+	}
+	if refreshed.Description != fixture.Description {
+		t.Errorf("the refresh changed the description: %q", refreshed.Description)
+	}
+	if refreshed.Captured == nil || refreshed.Captured.TxHash != testHash {
+		t.Error("the refresh lost the capture provenance")
+	}
+	if strings.Contains(string(refreshed.Decoded), "stale") {
+		t.Errorf("the decoded section was not refreshed:\n%s", refreshed.Decoded)
+	}
+}
+
+// TestRefreshLeavesCurrentFixturesAlone checks that a refresh is safe to run
+// over a whole testdata directory: a fixture that is already current is not
+// rewritten, so the pull request stays empty.
+func TestRefreshLeavesCurrentFixturesAlone(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "envelope.golden.json")
+
+	fixture, err := golden.Build(fixtureXDR(t, "tx_failed.env.txt"), "TransactionEnvelope", "current", nil)
+	if err != nil {
+		t.Fatalf("Build() error = %v", err)
+	}
+	if err := golden.Save(path, fixture); err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+	before, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("reading the fixture: %v", err)
+	}
+
+	stdout, _, err := run(t, "refresh", dir)
+	if err != nil {
+		t.Fatalf("refresh failed: %v", err)
+	}
+	if !strings.Contains(stdout, "unchanged") {
+		t.Errorf("refresh did not report the fixture as unchanged:\n%s", stdout)
+	}
+
+	after, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("reading the fixture: %v", err)
+	}
+	if !bytes.Equal(before, after) {
+		t.Error("a current fixture was rewritten")
+	}
+}
+
+// TestRefreshDryRunChangesNothing checks that the dry run shows what would
+// change without touching a byte.
+func TestRefreshDryRunChangesNothing(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "envelope.golden.json")
+
+	fixture := staleFixture(t)
+	if err := golden.Save(path, fixture); err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+	before, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("reading the fixture: %v", err)
+	}
+
+	stdout, _, err := run(t, "refresh", dir, "--dry-run")
+	if err != nil {
+		t.Fatalf("refresh --dry-run failed: %v", err)
+	}
+	if !strings.Contains(stdout, "would change") {
+		t.Errorf("the dry run did not say what would change:\n%s", stdout)
+	}
+	if !strings.Contains(stdout, "- ") || !strings.Contains(stdout, "+ ") {
+		t.Errorf("the dry run did not show the difference:\n%s", stdout)
+	}
+
+	after, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("reading the fixture: %v", err)
+	}
+	if !bytes.Equal(before, after) {
+		t.Error("the dry run wrote to the fixture")
+	}
+}
+
+// TestRefreshReportsAFixtureItCannotDecode checks that a broken fixture is
+// reported rather than skipped: a refresh that quietly passes over a file it
+// could not read is a refresh that leaves the file stale.
+func TestRefreshReportsAFixtureItCannotDecode(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "broken.golden.json")
+
+	fixture := staleFixture(t)
+	fixture.XDR = "!!! not xdr !!!"
+	if err := golden.Save(path, fixture); err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+
+	stdout, stderr, err := run(t, "refresh", dir)
+	if err == nil {
+		t.Fatal("refresh succeeded on a fixture it could not decode")
+	}
+	if code, _ := ExitCode(err); code != ExitFailure {
+		t.Errorf("refresh exited %d, want %d", code, ExitFailure)
+	}
+	if !strings.Contains(stderr, "ERROR") {
+		t.Errorf("the broken fixture was not reported:\n%s%s", stdout, stderr)
+	}
+}
+
+// staleFixture builds a fixture whose decoded section is out of date, as it
+// is after the formatter changes.
+func staleFixture(t *testing.T) *golden.Fixture {
+	t.Helper()
+
+	fixture, err := golden.Build(fixtureXDR(t, "tx_failed.env.txt"), "TransactionEnvelope", "stale",
+		golden.NewProvenance(capture.NetworkTestnet, "https://fake.example", 1234, testHash,
+			time.Date(2026, 8, 5, 12, 0, 0, 0, time.UTC)))
+	if err != nil {
+		t.Fatalf("Build() error = %v", err)
+	}
+	fixture.Decoded = json.RawMessage(`{"stale": true}`)
+	return fixture
 }
 
 func TestVersionCommand(t *testing.T) {
