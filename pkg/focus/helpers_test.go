@@ -16,7 +16,7 @@ const (
 	testIssuer = "GA2JRQOF6EA3HQWDCEDBPPMLYPJCFLDDGYZLEQGMS5SOBQIB3BAFHVAW"
 )
 
-func mustAccountID(t *testing.T, addr string) xdr.AccountId {
+func mustAccountID(t testing.TB, addr string) xdr.AccountId {
 	t.Helper()
 	var aid xdr.AccountId
 	if err := aid.SetAddress(addr); err != nil {
@@ -25,14 +25,14 @@ func mustAccountID(t *testing.T, addr string) xdr.AccountId {
 	return aid
 }
 
-func mustMuxed(t *testing.T, addr string) xdr.MuxedAccount {
+func mustMuxed(t testing.TB, addr string) xdr.MuxedAccount {
 	t.Helper()
 	aid := mustAccountID(t, addr)
 	return aid.ToMuxedAccount()
 }
 
 // paymentOp builds a native payment of the given stroop amount.
-func paymentOp(t *testing.T, amount int64) xdr.Operation {
+func paymentOp(t testing.TB, amount int64) xdr.Operation {
 	t.Helper()
 	return xdr.Operation{Body: xdr.OperationBody{
 		Type: xdr.OperationTypePayment,
@@ -46,7 +46,7 @@ func paymentOp(t *testing.T, amount int64) xdr.Operation {
 
 // creditPaymentOp builds a payment of a credit asset, for tests that need a
 // non-native asset in the diff.
-func creditPaymentOp(t *testing.T, code string, amount int64) xdr.Operation {
+func creditPaymentOp(t testing.TB, code string, amount int64) xdr.Operation {
 	t.Helper()
 	var asset xdr.Asset
 	if err := asset.SetCredit(code, mustAccountID(t, testIssuer)); err != nil {
@@ -64,12 +64,12 @@ func creditPaymentOp(t *testing.T, code string, amount int64) xdr.Operation {
 
 // envelopeValue builds a minimal valid v1 envelope around the given
 // operations.
-func envelopeValue(t *testing.T, ops ...xdr.Operation) xdr.TransactionEnvelope {
+func envelopeValue(t testing.TB, ops ...xdr.Operation) xdr.TransactionEnvelope {
 	t.Helper()
 	return envelopeValueSeq(t, 12345, ops...)
 }
 
-func envelopeValueSeq(t *testing.T, seq int64, ops ...xdr.Operation) xdr.TransactionEnvelope {
+func envelopeValueSeq(t testing.TB, seq int64, ops ...xdr.Operation) xdr.TransactionEnvelope {
 	t.Helper()
 	return xdr.TransactionEnvelope{
 		Type: xdr.EnvelopeTypeEnvelopeTypeTx,
@@ -87,21 +87,21 @@ func envelopeValueSeq(t *testing.T, seq int64, ops ...xdr.Operation) xdr.Transac
 }
 
 // buildEnvelope returns a base64 envelope wrapping the given operations.
-func buildEnvelope(t *testing.T, ops ...xdr.Operation) string {
+func buildEnvelope(t testing.TB, ops ...xdr.Operation) string {
 	t.Helper()
 	return mustMarshal(t, envelopeValue(t, ops...))
 }
 
 // buildEnvelopeSeq is buildEnvelope with an explicit sequence number, for
 // tests exercising the ignore and normalize options.
-func buildEnvelopeSeq(t *testing.T, seq int64, ops ...xdr.Operation) string {
+func buildEnvelopeSeq(t testing.TB, seq int64, ops ...xdr.Operation) string {
 	t.Helper()
 	return mustMarshal(t, envelopeValueSeq(t, seq, ops...))
 }
 
 // buildResult returns a base64 TransactionResult with the given code and
 // per-operation results.
-func buildResult(t *testing.T, code xdr.TransactionResultCode, ops ...xdr.OperationResult) string {
+func buildResult(t testing.TB, code xdr.TransactionResultCode, ops ...xdr.OperationResult) string {
 	t.Helper()
 
 	res := xdr.TransactionResult{
@@ -128,7 +128,7 @@ func paymentResult(code xdr.PaymentResultCode) xdr.OperationResult {
 
 // contractEvent builds a contract event with a symbol topic and an i128-free
 // u32 payload, which is enough to exercise matching without noise.
-func contractEvent(t *testing.T, topic string, data uint32) xdr.ContractEvent {
+func contractEvent(t testing.TB, topic string, data uint32) xdr.ContractEvent {
 	t.Helper()
 
 	sym := xdr.ScSymbol(topic)
@@ -151,7 +151,7 @@ func contractEvent(t *testing.T, topic string, data uint32) xdr.ContractEvent {
 
 // buildSorobanMeta wraps events in a V3 transaction meta with a u32 return
 // value of 7.
-func buildSorobanMeta(t *testing.T, events ...xdr.ContractEvent) string {
+func buildSorobanMeta(t testing.TB, events ...xdr.ContractEvent) string {
 	t.Helper()
 
 	ret := xdr.Uint32(7)
@@ -168,7 +168,7 @@ func buildSorobanMeta(t *testing.T, events ...xdr.ContractEvent) string {
 
 // accountEntryValue builds a ledger entry holding an account with the given
 // balance, thresholds and signers.
-func accountEntryValue(t *testing.T, addr string, balance int64, th xdr.Thresholds, signers ...xdr.Signer) xdr.LedgerEntry {
+func accountEntryValue(t testing.TB, addr string, balance int64, th xdr.Thresholds, signers ...xdr.Signer) xdr.LedgerEntry {
 	t.Helper()
 	return xdr.LedgerEntry{
 		LastModifiedLedgerSeq: 42,
@@ -185,7 +185,7 @@ func accountEntryValue(t *testing.T, addr string, balance int64, th xdr.Threshol
 }
 
 // trustLineAsset builds a credit trustline asset with the test issuer.
-func trustLineAsset(t *testing.T, code string) xdr.TrustLineAsset {
+func trustLineAsset(t testing.TB, code string) xdr.TrustLineAsset {
 	t.Helper()
 	var asset xdr.Asset
 	if err := asset.SetCredit(code, mustAccountID(t, testIssuer)); err != nil {
@@ -195,7 +195,7 @@ func trustLineAsset(t *testing.T, code string) xdr.TrustLineAsset {
 }
 
 // trustlineEntryValue builds a ledger entry holding a trustline.
-func trustlineEntryValue(t *testing.T, addr, code string, balance, limit int64) xdr.LedgerEntry {
+func trustlineEntryValue(t testing.TB, addr, code string, balance, limit int64) xdr.LedgerEntry {
 	t.Helper()
 	return xdr.LedgerEntry{
 		LastModifiedLedgerSeq: 42,
@@ -211,7 +211,7 @@ func trustlineEntryValue(t *testing.T, addr, code string, balance, limit int64) 
 	}
 }
 
-func ledgerKeyOf(t *testing.T, entry xdr.LedgerEntry) xdr.LedgerKey {
+func ledgerKeyOf(t testing.TB, entry xdr.LedgerEntry) xdr.LedgerKey {
 	t.Helper()
 	key, err := entry.LedgerKey()
 	if err != nil {
@@ -221,7 +221,7 @@ func ledgerKeyOf(t *testing.T, entry xdr.LedgerEntry) xdr.LedgerKey {
 }
 
 // signerValue builds one account signer.
-func signerValue(t *testing.T, addr string, weight uint32) xdr.Signer {
+func signerValue(t testing.TB, addr string, weight uint32) xdr.Signer {
 	t.Helper()
 	return xdr.Signer{Key: xdr.MustSigner(addr), Weight: xdr.Uint32(weight)}
 }
@@ -247,14 +247,14 @@ func removedChange(key xdr.LedgerKey) xdr.LedgerEntryChange {
 }
 
 // metaV2 wraps per-operation changes in a version 2 transaction meta.
-func metaV2(t *testing.T, ops ...[]xdr.LedgerEntryChange) string {
+func metaV2(t testing.TB, ops ...[]xdr.LedgerEntryChange) string {
 	t.Helper()
 	return metaV2WithTx(t, nil, nil, ops...)
 }
 
 // metaV2WithTx wraps transaction-level and per-operation changes in a version
 // 2 transaction meta, the shape a fee and a sequence bump arrive in.
-func metaV2WithTx(t *testing.T, before, after []xdr.LedgerEntryChange, ops ...[]xdr.LedgerEntryChange) string {
+func metaV2WithTx(t testing.TB, before, after []xdr.LedgerEntryChange, ops ...[]xdr.LedgerEntryChange) string {
 	t.Helper()
 
 	operations := make([]xdr.OperationMeta, 0, len(ops))
@@ -272,7 +272,7 @@ func metaV2WithTx(t *testing.T, before, after []xdr.LedgerEntryChange, ops ...[]
 }
 
 // metaV0 wraps per-operation changes in a version 0 transaction meta.
-func metaV0(t *testing.T, ops ...[]xdr.LedgerEntryChange) string {
+func metaV0(t testing.TB, ops ...[]xdr.LedgerEntryChange) string {
 	t.Helper()
 
 	operations := make([]xdr.OperationMeta, 0, len(ops))
@@ -284,7 +284,7 @@ func metaV0(t *testing.T, ops ...[]xdr.LedgerEntryChange) string {
 
 // metaV1 wraps transaction-level and per-operation changes in a version 1
 // transaction meta.
-func metaV1(t *testing.T, txChanges []xdr.LedgerEntryChange, ops ...[]xdr.LedgerEntryChange) string {
+func metaV1(t testing.TB, txChanges []xdr.LedgerEntryChange, ops ...[]xdr.LedgerEntryChange) string {
 	t.Helper()
 
 	operations := make([]xdr.OperationMeta, 0, len(ops))
@@ -313,7 +313,7 @@ func precondV2(tb *xdr.TimeBounds, lb *xdr.LedgerBounds) xdr.Preconditions {
 
 // v0EnvelopeValue builds a preconditions-era envelope carrying time bounds in
 // the older TransactionV0 field.
-func v0EnvelopeValue(t *testing.T, tb *xdr.TimeBounds, ops ...xdr.Operation) xdr.TransactionEnvelope {
+func v0EnvelopeValue(t testing.TB, tb *xdr.TimeBounds, ops ...xdr.Operation) xdr.TransactionEnvelope {
 	t.Helper()
 
 	aid := mustAccountID(t, testSource)
@@ -341,7 +341,7 @@ func v0EnvelopeValue(t *testing.T, tb *xdr.TimeBounds, ops ...xdr.Operation) xdr
 // feeBumpEnvelopeValue wraps an envelope's transaction in a fee bump with the
 // given outer and inner signatures.
 func feeBumpEnvelopeValue(
-	t *testing.T, inner xdr.TransactionEnvelope,
+	t testing.TB, inner xdr.TransactionEnvelope,
 	outerSigs, innerSigs []xdr.DecoratedSignature,
 ) xdr.TransactionEnvelope {
 	t.Helper()
@@ -367,7 +367,7 @@ func feeBumpEnvelopeValue(
 
 // metaV3WithTx wraps transaction-level and per-operation changes in a version
 // 3 (Soroban) transaction meta.
-func metaV3WithTx(t *testing.T, before, after []xdr.LedgerEntryChange, ops ...[]xdr.LedgerEntryChange) string {
+func metaV3WithTx(t testing.TB, before, after []xdr.LedgerEntryChange, ops ...[]xdr.LedgerEntryChange) string {
 	t.Helper()
 
 	operations := make([]xdr.OperationMeta, 0, len(ops))
@@ -398,7 +398,7 @@ func claimableBalanceIDValue(seed byte) xdr.ClaimableBalanceId {
 }
 
 // unconditionalClaimant builds a claimant that can claim at any time.
-func unconditionalClaimant(t *testing.T, addr string) xdr.Claimant {
+func unconditionalClaimant(t testing.TB, addr string) xdr.Claimant {
 	t.Helper()
 	return xdr.Claimant{
 		Type: xdr.ClaimantTypeClaimantTypeV0,
@@ -413,7 +413,7 @@ func unconditionalClaimant(t *testing.T, addr string) xdr.Claimant {
 
 // beforeTimeClaimant builds a claimant whose claim expires at an absolute
 // time, the predicate a timed escrow uses.
-func beforeTimeClaimant(t *testing.T, addr string, absBefore int64) xdr.Claimant {
+func beforeTimeClaimant(t testing.TB, addr string, absBefore int64) xdr.Claimant {
 	t.Helper()
 	before := xdr.Int64(absBefore)
 	return xdr.Claimant{
@@ -452,7 +452,7 @@ func claimableBalanceEntryWith(
 }
 
 // dataLedgerEntryValue builds a ledger entry holding an account data entry.
-func dataLedgerEntryValue(t *testing.T, addr, name string, value []byte) xdr.LedgerEntry {
+func dataLedgerEntryValue(t testing.TB, addr, name string, value []byte) xdr.LedgerEntry {
 	t.Helper()
 	return xdr.LedgerEntry{
 		LastModifiedLedgerSeq: 42,
@@ -508,7 +508,7 @@ func poolEntryValue(
 
 // offerEntryValue builds a ledger entry holding an order book offer.
 func offerEntryValue(
-	t *testing.T, addr string, offerID int64, selling, buying xdr.Asset, amount int64, price xdr.Price,
+	t testing.TB, addr string, offerID int64, selling, buying xdr.Asset, amount int64, price xdr.Price,
 ) xdr.LedgerEntry {
 	t.Helper()
 	return xdr.LedgerEntry{
@@ -535,7 +535,7 @@ func nativeAsset() xdr.Asset {
 
 // orderBookClaim builds a claim atom for a matched order book offer.
 func orderBookClaim(
-	t *testing.T, seller string, offerID int64,
+	t testing.TB, seller string, offerID int64,
 	sold xdr.Asset, amountSold int64, bought xdr.Asset, amountBought int64,
 ) xdr.ClaimAtom {
 	t.Helper()

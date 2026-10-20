@@ -57,6 +57,7 @@ pkg/focus/
   sponsorship.go      who pays an entry's reserve
   inflation.go        inflation payouts and ledger fee-pool assertions
   soroban.go          events, return values
+  traps.go            contract traps and the host diagnostics that explain them
   constructor.go      deployment state and owner binding (__constructor)
   diagnostic_order.go diagnostic stream order and timelines
   simulation.go       simulated resource budget assertions
@@ -311,6 +312,45 @@ through the same `coerce` every assertion uses, walks it with the SDK's
 call depth and a pre-rendered description. Pre-rendering is deliberate — the
 description is built while the value is known to be well-formed, so printing a
 failure never calls a generated accessor on a value that could panic.
+
+## Contract traps and host diagnostics
+
+A trap is the host aborting an invocation: the contract never returns, so
+there is no return value to assert on. `AssertContractTrapped` answers the
+first half of the question from the transaction result — an operation result
+of `invoke_host_function_trapped` — but the result stops there. *Why* the call
+died is recorded only in the host's diagnostic stream, as an `error` event
+whose payload is an `ScError`.
+
+`AssertContractTrappedWith` (`traps.go`) checks both halves and takes the
+substring a test expects to find, such as `Error(Contract, #4)`.
+
+**Evidence has two shapes, and both are offline.** A Soroban RPC
+`getTransaction` response carries everything in one value (`ResultXDR` for the
+trap, `DiagnosticEventsXDR` for the stream), so it is accepted directly. A
+captured fixture set keeps the result and the meta in separate files, so
+`TrapEvidence{Result, Meta}` is how those two are handed over together. The
+switch in `trapEvidence` is the seam: another carrier is one more case, and
+nothing above it needs to change.
+
+**A bare result is refused, not passed.** A `TransactionResult` records that
+an operation trapped and carries no diagnostics at all. Returning true would
+mean the assertion quietly skipped the check it was created for, so it fails
+with the carrier it needs named instead. The same reasoning rejects a blank
+expected substring, which would match every stream.
+
+**The substring is matched against what the failure prints.** Events are
+decorated once, by `decorateDiagnostics`, with the same one-line description
+`describeDiagnosticEvent` builds for the ordering assertions, and the match
+runs over those rendered lines, so what was searched and what is shown can
+never disagree. `describeScError` renders a host error the way the SDK and
+the Stellar CLI do: `Error(Contract, #4)` for a contract's own code,
+`Error(WasmVm, InvalidAction)` for a host-side fault. Reading the union arms
+directly rather than through the generated accessors keeps a malformed value
+renderable instead of panicking. Matching is case-sensitive; a hit that
+differs only in case is called out in the failure, because that is almost
+always the mistake, and an empty diagnostic stream is reported as
+unsearchable rather than treated as a pass.
 
 ## Contract deployment state
 
@@ -778,6 +818,15 @@ violated:
 - a diagnostic stream is pinned to the ledger its meta pins, and a stream that
   cannot be placed is reported rather than passed
   (`TestAssertDiagnosticEventTimelineMessages`);
+- a contract trap is proven from the result and explained from the host's
+  diagnostics, searched both through an RPC response and through a `TrapEvidence`
+  pair of fixtures, with a bare result, a blank substring and an empty stream
+  each reported rather than passed, and a case-only near miss named
+  (`TestAssertContractTrappedWithPasses`,
+  `TestAssertContractTrappedWithFailureMessages`);
+- host errors render as `Error(Contract, #4)` and `Error(WasmVm, InvalidAction)`,
+  with an arm outside the enum named by number rather than left blank
+  (`TestDescribeScErrorRendering`, `TestDescribeScError`);
 - a claimable balance is matched by claimant and amount, with a wrong claimant,
   a wrong amount and a balance nobody can claim each named differently, and the
   claim predicates — including the composite forms — listed underneath
