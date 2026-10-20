@@ -42,6 +42,13 @@ func EnvelopeEqual(t focus.TB, want, got focus.Value, opts ...focus.Option) {
 	focus.AssertEnvelopeEqual(fatal(t), want, got, opts...)
 }
 
+// EnvelopeEqualUnordered is focus.AssertEnvelopeEqualUnordered, stopping the
+// test on failure.
+func EnvelopeEqualUnordered(t focus.TB, want, got focus.Value, opts ...focus.Option) {
+	t.Helper()
+	focus.AssertEnvelopeEqualUnordered(fatal(t), want, got, opts...)
+}
+
 // ResultEqual is focus.AssertResultEqual, stopping the test on failure.
 func ResultEqual(t focus.TB, want, got focus.Value, opts ...focus.Option) {
 	t.Helper()

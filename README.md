@@ -143,6 +143,27 @@ Two deliberate behaviours:
   when the values are otherwise equal. A stale pattern is a test quietly
   weakening, and this is the only moment anyone would notice.
 
+### Comparing arrays as sets
+
+Some XDR arrays are ordered and some are not. The signatures on a multi-signed
+transaction arrive in signing order, which is not part of what the transaction
+means, and a positional comparison reports one difference per element for what
+is really the same envelope.
+
+```go
+focus.AssertEnvelopeEqualUnordered(t, want, got)   // signatures compared as a set
+focus.AssertEnvelopeEqual(t, want, got, focus.SortPath("**.Signatures"))
+```
+
+The arrays at the matching paths are sorted before the diff, so `[sigA, sigB]`
+and `[sigB, sigA]` compare equal. Everything else is still compared the usual
+way: a missing signature is still a difference.
+
+The same two deliberate behaviours apply. The paths that were compared as
+unordered sets are named in the failure output, and a sort pattern that
+matches no array is reported as a failure, because a rule that quietly does
+nothing is the same problem as a stale ignore pattern.
+
 ### `require` for fatal assertions
 
 ```go
