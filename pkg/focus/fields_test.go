@@ -452,3 +452,186 @@ func TestFieldAssertionsRequireFatalf(t *testing.T) {
 		t.Errorf("require lost the field name:\n%s", msg)
 	}
 }
+
+// feeBumpWithMemo builds a fee-bump envelope whose inner transaction
+// carries a text memo, so a test can tell the inner transaction's memo from
+// the wrapper's.
+func feeBumpWithMemo(t testing.TB, memo string) xdr.TransactionEnvelope {
+	t.Helper()
+
+	inner := envelopeValue(t, paymentOp(t, 100))
+	text := memo
+	inner.V1.Tx.Memo = xdr.Memo{Type: xdr.MemoTypeMemoText, Text: &text}
+	return feeBumpEnvelopeValue(t, inner, nil, nil)
+}
+
+// TestFieldAssertionsReadThroughAFeeBump checks the documented behaviour of
+// the field assertions on a fee-bump envelope: they read the inner
+// transaction, because that is the transaction the protocol executes.
+func TestFieldAssertionsReadThroughAFeeBump(t *testing.T) {
+	t.Parallel()
+
+	feeBump := feeBumpWithMemo(t, "hello")
+
+	tests := []struct {
+		name string
+		call func(tb focus.TB) bool
+	}{
+		{"source account", func(tb focus.TB) bool { return focus.AssertSourceAccount(tb, feeBump, testSource) }},
+		{"memo", func(tb focus.TB) bool { return focus.AssertMemo(tb, feeBump, "text: hello") }},
+		{"operation types", func(tb focus.TB) bool { return focus.AssertOperationTypes(tb, feeBump, "payment") }},
+		{"fee bump", func(tb focus.TB) bool { return focus.AssertFeeBump(tb, feeBump, true) }},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			tb := faketb.New()
+			if !tc.call(tb) {
+				t.Errorf("assertion failed unexpectedly:\n%s", tb.Output())
+			}
+		})
+	}
+
+	t.Run("the fee payer is not the source account", func(t *testing.T) {
+		t.Parallel()
+
+		tb := faketb.New()
+		if focus.AssertSourceAccount(tb, feeBump, testDest) {
+			t.Error("the fee payer's account was read as the source account")
+		}
+	})
+}
+
+// TestInnerEnvelopeReturnsTheInnerTransaction checks that the inner
+// transaction comes back as a value every assertion can read.
+func TestInnerEnvelopeReturnsTheInnerTransaction(t *testing.T) {
+	t.Parallel()
+
+	inner := envelopeValue(t, paymentOp(t, 100))
+	feeBump := feeBumpEnvelopeValue(t, inner, nil, nil)
+
+	tb := faketb.New()
+	got, ok := focus.InnerEnvelope(tb, feeBump)
+	if !ok {
+		t.Fatalf("InnerEnvelope failed:\n%s", tb.Output())
+	}
+
+	// The inner transaction is the one that was wrapped, so it compares
+	// equal to the envelope it was built from.
+	want := mustMarshal(t, xdr.TransactionEnvelope{
+		Type: xdr.EnvelopeTypeEnvelopeTypeTx,
+		V1: &xdr.TransactionV1Envelope{
+			Tx:         inner.V1.Tx,
+			Signatures: inner.V1.Signatures,
+		},
+	})
+	if got != want {
+		t.Errorf("InnerEnvelope = %v, want the inner transaction %v", got, want)
+	}
+
+	// And it can be handed to another assertion.
+	if !focus.AssertOperationTypes(faketb.New(), got, "payment") {
+		t.Error("the inner transaction cannot be asserted on")
+	}
+}
+
+// TestInnerEnvelopeRejectsAPlainEnvelope checks that a transaction with no
+// inner transaction is reported rather than returned as something empty.
+func TestInnerEnvelopeRejectsAPlainEnvelope(t *testing.T) {
+	t.Parallel()
+
+	tb := faketb.New()
+	if _, ok := focus.InnerEnvelope(tb, envelopeValue(t, paymentOp(t, 100))); ok {
+		t.Fatal("InnerEnvelope accepted a transaction that is not fee-bumped")
+	}
+
+	msg, err := tb.Message()
+	if err != nil {
+		t.Fatalf("%v", err)
+	}
+	if !strings.Contains(msg, "not fee-bumped") {
+		t.Errorf("message does not explain the problem:\n%s", msg)
+	}
+}
+
+// TestAssertFeeBumpInnerRunsTheCheckOnTheInnerTransaction is what the
+// assertion is for: a check made on the transaction the fee bump wraps.
+func TestAssertFeeBumpInnerRunsTheCheckOnTheInnerTransaction(t *testing.T) {
+	t.Parallel()
+
+	feeBump := feeBumpWithMemo(t, "hello")
+
+	t.Run("the check sees the inner transaction", func(t *testing.T) {
+		t.Parallel()
+
+		tb := faketb.New()
+		ok := focus.AssertFeeBumpInner(tb, feeBump, func(inner focus.Value) bool {
+			return focus.AssertOperationTypes(tb, inner, "payment") &&
+				focus.AssertMemo(tb, inner, "text: hello")
+		})
+		if !ok {
+			t.Errorf("the check on the inner transaction failed:\n%s", tb.Output())
+		}
+		if tb.Failed() {
+			t.Errorf("a passing check reported a failure:\n%s", tb.Output())
+		}
+	})
+
+	t.Run("a failing check is reported", func(t *testing.T) {
+		t.Parallel()
+
+		tb := faketb.New()
+		ok := focus.AssertFeeBumpInner(tb, feeBump, func(inner focus.Value) bool {
+			return focus.AssertOperationTypes(tb, inner, "change_trust")
+		})
+		if ok {
+			t.Error("the assertion passed although the check failed")
+		}
+		if !tb.Failed() {
+			t.Error("the failing check reported nothing")
+		}
+	})
+
+	t.Run("a transaction with no inner transaction", func(t *testing.T) {
+		t.Parallel()
+
+		tb := faketb.New()
+		ok := focus.AssertFeeBumpInner(tb, envelopeValue(t, paymentOp(t, 100)), func(focus.Value) bool {
+			t.Error("the check ran although there is no inner transaction")
+			return true
+		})
+		if ok {
+			t.Error("the assertion passed although there is no inner transaction")
+		}
+	})
+
+	t.Run("no check at all", func(t *testing.T) {
+		t.Parallel()
+
+		tb := faketb.New()
+		if focus.AssertFeeBumpInner(tb, feeBump, nil) {
+			t.Error("the assertion passed although no check was given")
+		}
+		if !tb.Failed() {
+			t.Error("the missing check was not reported")
+		}
+	})
+}
+
+// TestAssertFeeBumpInnerRequireMirror checks the fatal mirror of the new
+// assertion.
+func TestAssertFeeBumpInnerRequireMirror(t *testing.T) {
+	t.Parallel()
+
+	feeBump := feeBumpWithMemo(t, "hello")
+
+	tb := faketb.New()
+	require.FeeBumpInner(tb, feeBump, func(inner focus.Value) bool {
+		return focus.AssertOperationTypes(tb, inner, "change_trust")
+	})
+	if len(tb.Fatals) == 0 {
+		t.Errorf("require did not report fatally:\n%s", tb.Output())
+	}
+}

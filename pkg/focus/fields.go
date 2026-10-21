@@ -42,6 +42,10 @@ func summarize(t TB, assertion string, v Value, typeName string) (*lens.Summary,
 
 // AssertSourceAccount checks the transaction's source account, as a strkey
 // address.
+//
+// A fee-bump envelope is read through to the inner transaction, so this is
+// the account the inner transaction is sourced from — the account the
+// protocol charges the fee to.
 func AssertSourceAccount(t TB, envelope Value, want string) bool {
 	t.Helper()
 	s, ok := summarize(t, "AssertSourceAccount", envelope, "TransactionEnvelope")
@@ -88,6 +92,9 @@ func AssertSequence(t TB, envelope Value, want int64) bool {
 // The expected value uses the same form lens prints, so a text memo is
 // "text: hello", an id memo "id: 42" and a hash memo "hash: <hex>". An empty
 // string asserts that there is no memo.
+//
+// A fee-bump envelope is read through to the inner transaction, so this is
+// the inner transaction's memo.
 func AssertMemo(t TB, envelope Value, want string) bool {
 	t.Helper()
 	s, ok := summarize(t, "AssertMemo", envelope, "TransactionEnvelope")
@@ -123,6 +130,9 @@ func AssertOperationCount(t TB, envelope Value, want int) bool {
 // AssertOperationTypes checks the operation types, in order, using the
 // snake_case names Horizon uses: "payment", "change_trust",
 // "invoke_host_function".
+//
+// A fee-bump envelope is read through to the inner transaction, so these are
+// the inner transaction's operations.
 func AssertOperationTypes(t TB, envelope Value, want ...string) bool {
 	t.Helper()
 	s, ok := summarize(t, "AssertOperationTypes", envelope, "TransactionEnvelope")
@@ -299,6 +309,102 @@ func AssertFeeBump(t TB, envelope Value, want bool) bool {
 		return false
 	}
 	return true
+}
+
+// InnerEnvelope returns the inner transaction of a fee-bump envelope.
+//
+// A fee-bump envelope wraps an inner transaction in an outer fee payer and
+// a fee bid. The inner transaction is the one the protocol executes, so a
+// test that wants to assert on it needs it as a value of its own.
+//
+// The result is the inner envelope in the form every assertion accepts:
+// base64 XDR, so it can be handed straight to another assertion.
+//
+// An envelope that is not fee-bumped has no inner transaction. That is
+// reported rather than returned as an empty value, because a check that
+// silently compared nothing is a check that always passes.
+func InnerEnvelope(t TB, envelope Value) (Value, bool) {
+	t.Helper()
+	const assertion = "InnerEnvelope"
+
+	env, _, ok := envelopeFrom(t, assertion, envelope)
+	if !ok {
+		return nil, false
+	}
+	if !env.IsFeeBump() {
+		t.Errorf("%s: the transaction is not fee-bumped, so it has no inner transaction", assertion)
+		return nil, false
+	}
+
+	var (
+		inner string
+		err   error
+	)
+	if !guard(t, assertion, func() {
+		inner, err = innerEnvelopeXDR(env)
+	}) {
+		return nil, false
+	}
+	if err != nil {
+		t.Errorf("%s: could not read the inner transaction: %v", assertion, err)
+		return nil, false
+	}
+	return inner, true
+}
+
+// AssertFeeBumpInner runs a check against the inner transaction of a
+// fee-bump envelope.
+//
+// The assertions that read an envelope's fields — the source account, the
+// memo, the operations — read through a fee bump to the inner transaction,
+// since that is the transaction the protocol executes. This assertion is
+// for the checks that have to be made on the inner transaction explicitly:
+// it hands the inner transaction to a check of the caller's choosing.
+//
+// The check is a function, so it can be any assertion:
+//
+//	focus.AssertFeeBumpInner(t, envelope, func(inner focus.Value) bool {
+//		return focus.AssertOperationTypes(t, inner, "payment")
+//	})
+//
+// The check reports its own failure; this assertion reports that the
+// envelope had no inner transaction to check.
+func AssertFeeBumpInner(t TB, envelope Value, innerCheck func(inner Value) bool) bool {
+	t.Helper()
+	const assertion = "AssertFeeBumpInner"
+
+	if innerCheck == nil {
+		t.Errorf("%s: no check was given for the inner transaction", assertion)
+		return false
+	}
+
+	inner, ok := InnerEnvelope(t, envelope)
+	if !ok {
+		return false
+	}
+	if !innerCheck(inner) {
+		t.Errorf("%s: the check on the inner transaction failed", assertion)
+		return false
+	}
+	return true
+}
+
+// innerEnvelopeXDR renders the inner transaction of a fee-bump envelope as
+// base64 XDR.
+//
+// A fee bump's inner transaction is always a V1 transaction, so it can be
+// rebuilt as an ordinary envelope and read by any assertion. It calls the
+// generated accessors, so it must run behind guard.
+func innerEnvelopeXDR(env *xdr.TransactionEnvelope) (string, error) {
+	inner := &xdr.TransactionEnvelope{
+		Type: xdr.EnvelopeTypeEnvelopeTypeTx,
+		V1:   env.FeeBump.Tx.InnerTx.V1,
+	}
+	b, err := inner.MarshalBinary()
+	if err != nil {
+		return "", err
+	}
+	return base64Encode(b), nil
 }
 
 // Summarize returns the lens summary of a transaction, as an escape hatch for
