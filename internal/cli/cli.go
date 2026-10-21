@@ -10,6 +10,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -38,6 +39,21 @@ var newSource = func(kind, network, endpoint string, timeout time.Duration) capt
 	default:
 		return capture.NewRPCSource(network, endpoint, timeout)
 	}
+}
+
+// openSource builds the configured capture source, falling back to a
+// history archive when --archive-url names one.
+func openSource(cfg *config) (capture.Source, error) {
+	endpoint, err := cfg.endpoint()
+	if err != nil {
+		return nil, usageErrorf("%v", err)
+	}
+	src := newSource(cfg.source(), cfg.network(), endpoint, cfg.timeout())
+	if url := cfg.archiveURL(); url != "" {
+		archive := capture.NewArchivalSource(cfg.network(), url, cfg.timeout())
+		src = capture.NewFallbackSource(src, archive)
+	}
+	return src, nil
 }
 
 // now is injectable so captures in tests carry a fixed timestamp.
@@ -147,23 +163,36 @@ func newCaptureCmd(cfg *config, stdout, stderr io.Writer) *cobra.Command {
 		Short: "Record real chain data as fixture files",
 	}
 
+	var ledger uint32
+
 	txCmd := &cobra.Command{
 		Use:   "tx <hash>",
 		Short: "Record a transaction's envelope, result and meta",
 		Long: `Fetch a transaction and write its envelope, result and meta as separate
 fixture files, each stamped with the network, ledger and capture time so it
-can be re-checked later with focus verify.`,
+can be re-checked later with focus verify.
+
+RPC keeps only recent history. With --archive-url, a transaction RPC no
+longer has is read from a Stellar history archive instead; an archive is
+not indexed by hash, so give the ledger it closed in with --ledger. An
+archive holds envelopes and results but not transaction meta.`,
 		Example: `  focus capture tx 2b2e276a… --out testdata/
-  focus capture tx 2b2e276a… --out testdata/ --prefix failed_payment`,
+  focus capture tx 2b2e276a… --out testdata/ --prefix failed_payment
+
+  # A transaction older than RPC keeps, from the history archive
+  focus capture tx 2b2e276a… --network mainnet --ledger 3966820 \
+    --archive-url https://history.stellar.org/prd/core-live/core_live_001`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			endpoint, err := cfg.endpoint()
+			src, err := openSource(cfg)
 			if err != nil {
-				return usageErrorf("%v", err)
+				return err
 			}
-			src := newSource(cfg.source(), cfg.network(), endpoint, cfg.timeout())
 
-			records, err := src.Transaction(cmd.Context(), args[0])
+			records, err := capture.FetchTransaction(cmd.Context(), src, args[0], ledger)
+			if errors.Is(err, capture.ErrLedgerRequired) {
+				return usageErrorf("%v\n(give the ledger the transaction closed in with --ledger)", err)
+			}
 			if err != nil {
 				return err
 			}
@@ -177,11 +206,10 @@ can be re-checked later with focus verify.`,
 		Short: "Record a ledger entry",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			endpoint, err := cfg.endpoint()
+			src, err := openSource(cfg)
 			if err != nil {
-				return usageErrorf("%v", err)
+				return err
 			}
-			src := newSource(cfg.source(), cfg.network(), endpoint, cfg.timeout())
 
 			records, err := src.LedgerEntry(cmd.Context(), args[0])
 			if err != nil {
@@ -191,6 +219,9 @@ can be re-checked later with focus verify.`,
 				cfg.outDir(), cfg.prefix(), cfg.force(), cfg.maskAddresses(), stdout)
 		},
 	}
+
+	txCmd.Flags().Uint32Var(&ledger, "ledger", 0,
+		"ledger the transaction closed in; needed to find it in a history archive")
 
 	cfg.bindCaptureFlags(cmd)
 	cmd.AddCommand(txCmd, entryCmd)

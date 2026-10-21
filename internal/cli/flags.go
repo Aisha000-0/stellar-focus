@@ -52,6 +52,7 @@ const (
 	keyPrefix  = "prefix"
 	keyForce   = "force"
 	keyMask    = "mask-addresses"
+	keyArchive = "archive-url"
 )
 
 // The capture sources the command can talk to.
@@ -73,6 +74,7 @@ const (
 	defaultPrefix  = ""
 	defaultForce   = false
 	defaultMask    = false
+	defaultArchive = ""
 )
 
 // discoveredConfigFiles are checked, in order, when --config is not given.
@@ -108,6 +110,7 @@ func newConfig() *config {
 	v.SetDefault(keyOut, defaultOutDir)
 	v.SetDefault(keyPrefix, defaultPrefix)
 	v.SetDefault(keyForce, defaultForce)
+	v.SetDefault(keyArchive, defaultArchive)
 
 	return &config{v: v}
 }
@@ -125,6 +128,8 @@ func (c *config) bindRootFlags(root *cobra.Command) {
 		"endpoint override, for the source in use")
 	flags.String(keySource, defaultSource,
 		"where to capture from: rpc or horizon")
+	flags.String(keyArchive, defaultArchive,
+		"history archive to fall back to for transactions older than the source keeps")
 	flags.Duration(keyTimeout, defaultTimeout,
 		"timeout for a single RPC call")
 	flags.String(keyColor, defaultColor,
@@ -134,6 +139,7 @@ func (c *config) bindRootFlags(root *cobra.Command) {
 	c.bind(flags, keyNetwork)
 	c.bind(flags, keyRPCURL)
 	c.bind(flags, keySource)
+	c.bind(flags, keyArchive)
 	c.bind(flags, keyTimeout)
 	c.bind(flags, keyColor)
 }
@@ -278,6 +284,11 @@ func (c *config) rpcURL() string {
 		return url
 	}
 	return strings.TrimSpace(c.v.GetString("rpc_url"))
+}
+
+// archiveURL is the history archive to fall back to, empty for none.
+func (c *config) archiveURL() string {
+	return strings.TrimSpace(c.v.GetString(keyArchive))
 }
 
 // timeout bounds a single RPC call.

@@ -171,7 +171,7 @@ func Verify(ctx context.Context, src Source, path string, f *golden.Fixture) Ver
 		}
 	}
 
-	records, err := src.Transaction(ctx, f.Captured.TxHash)
+	records, err := FetchTransaction(ctx, src, f.Captured.TxHash, f.Captured.Ledger)
 	if err != nil {
 		result.Err = fmt.Errorf("re-fetching %s: %w", f.Captured.TxHash, err)
 		return result
