@@ -27,6 +27,7 @@ import (
 
 	"github.com/stellar-optics/stellar-xdr-lens/pkg/lens"
 	lensformat "github.com/stellar-optics/stellar-xdr-lens/pkg/lens/format"
+	"github.com/stellar/go-stellar-sdk/network"
 
 	"github.com/stellar-optics/stellar-focus/pkg/focus"
 )
@@ -70,6 +71,11 @@ type Fixture struct {
 
 // Provenance records where a captured fixture came from, so a stale fixture
 // can be traced and re-verified.
+//
+// NetworkPassphrase is recorded alongside the network name because the name
+// alone is ambiguous: a transaction hash and its signatures are bound to the
+// passphrase, and two private networks can share a name but not a
+// passphrase.
 type Provenance struct {
 	Network           string `json:"network"`
 	NetworkPassphrase string `json:"networkPassphrase,omitempty"`
@@ -78,6 +84,7 @@ type Provenance struct {
 	At                string `json:"at"`
 	Endpoint          string `json:"endpoint,omitempty"`
 	Anonymized        bool   `json:"anonymized,omitempty"`
+	Sanitized         bool   `json:"sanitized,omitempty"`
 }
 
 // Golden compares values against golden files on disk.
@@ -399,13 +406,36 @@ func SaveAs(path string, f *Fixture, format Format) error {
 	return nil
 }
 
+// KnownPassphrases maps the network names a capture records to the
+// passphrase those networks sign with.
+//
+// Only public networks are listed. A standalone or private network has a
+// passphrase of its own, which the capture source reports or the caller
+// supplies.
+var KnownPassphrases = map[string]string{
+	"testnet":   network.TestNetworkPassphrase,
+	"mainnet":   network.PublicNetworkPassphrase,
+	"futurenet": network.FutureNetworkPassphrase,
+}
+
+// PassphraseFor returns the passphrase of a known network, or an empty
+// string for a network it does not recognise.
+func PassphraseFor(networkName string) string {
+	return KnownPassphrases[networkName]
+}
+
 // NewProvenance records a capture at the given time.
-func NewProvenance(network, endpoint string, ledger uint32, txHash string, at time.Time) *Provenance {
+//
+// The network passphrase is filled in when the network is one of
+// KnownPassphrases; for any other network it is left empty for the caller to
+// set from the source or from an explicit value.
+func NewProvenance(networkName, endpoint string, ledger uint32, txHash string, at time.Time) *Provenance {
 	return &Provenance{
-		Network:  network,
-		Ledger:   ledger,
-		TxHash:   txHash,
-		At:       at.UTC().Format(time.RFC3339),
-		Endpoint: endpoint,
+		Network:           networkName,
+		NetworkPassphrase: PassphraseFor(networkName),
+		Ledger:            ledger,
+		TxHash:            txHash,
+		At:                at.UTC().Format(time.RFC3339),
+		Endpoint:          endpoint,
 	}
 }

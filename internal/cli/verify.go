@@ -31,15 +31,21 @@ func newVerifyCmd(cfg *config, stdout, stderr io.Writer) *cobra.Command {
 		Short: "Check that stored fixtures still match the chain",
 		Long: `Re-fetch each fixture from the network and report any that no longer match.
 
-Only fixtures carrying capture provenance can be checked; hand-written ones
-are skipped and reported as such rather than silently passing.
+Only fixtures carrying capture provenance can be checked; hand-written ones,
+and ones captured with --sanitize, are skipped and reported as such rather
+than silently passing.
 
 Paths may be files or directories. With no path, testdata is checked.
+
+With --archive-url, a fixture whose transaction RPC no longer keeps is
+checked against the history archive, using the ledger in its provenance.
 
 Exit status is 0 when every checked fixture still matches, 2 when at least one
 has drifted, and 1 when a fixture could not be checked at all.`,
 		Example: `  focus verify
-  focus verify testdata/ --network mainnet`,
+  focus verify testdata/ --network mainnet
+  focus verify testdata/ --network mainnet \
+    --archive-url https://history.stellar.org/prd/core-live/core_live_001`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) == 0 {
 				args = []string{defaultVerifyDir}
@@ -53,11 +59,10 @@ has drifted, and 1 when a fixture could not be checked at all.`,
 				return failureErrorf("no fixture files found in %s", strings.Join(args, ", "))
 			}
 
-			endpoint, err := cfg.endpoint()
+			src, err := openSource(cfg)
 			if err != nil {
-				return usageErrorf("%v", err)
+				return err
 			}
-			src := newSource(cfg.source(), cfg.network(), endpoint, cfg.timeout())
 
 			var checked, matched, drifted, skipped, errored int
 			for _, path := range paths {
@@ -74,7 +79,7 @@ has drifted, and 1 when a fixture could not be checked at all.`,
 				case res.Err != nil && errors.Is(res.Err, capture.ErrNotFound):
 					fmt.Fprintf(stderr, "%-40s GONE    %v\n", path, res.Err)
 					drifted++
-				case res.Err != nil && (f.Captured == nil || f.Captured.TxHash == ""):
+				case res.Err != nil && (f.Captured == nil || f.Captured.TxHash == "" || f.Captured.Sanitized):
 					fmt.Fprintf(stdout, "%-40s SKIP    %v\n", path, res.Err)
 					skipped++
 				case res.Err != nil:

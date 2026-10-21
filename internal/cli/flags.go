@@ -52,6 +52,13 @@ const (
 	keyPrefix  = "prefix"
 	keyForce   = "force"
 	keyMask    = "mask-addresses"
+	keyPass    = "passphrase"
+	keyFileSrc = "file-source"
+	keySanit   = "sanitize"
+	keyMemo    = "mask-memo"
+	keyData    = "scrub-data"
+	keyKeys    = "scrub-keys"
+	keyArchive = "archive-url"
 )
 
 // The capture sources the command can talk to.
@@ -60,6 +67,9 @@ const (
 	sourceRPC = "rpc"
 	// sourceHorizon captures from a Horizon REST endpoint.
 	sourceHorizon = "horizon"
+	// sourceFile replays XDR dumps from a local directory. It is chosen by
+	// --file-source rather than --source, since it needs a directory.
+	sourceFile = "file"
 )
 
 // Defaults, declared once so a flag and a config fallback cannot drift apart.
@@ -73,6 +83,9 @@ const (
 	defaultPrefix  = ""
 	defaultForce   = false
 	defaultMask    = false
+	defaultPass    = ""
+	defaultFileSrc = ""
+	defaultArchive = ""
 )
 
 // discoveredConfigFiles are checked, in order, when --config is not given.
@@ -108,6 +121,9 @@ func newConfig() *config {
 	v.SetDefault(keyOut, defaultOutDir)
 	v.SetDefault(keyPrefix, defaultPrefix)
 	v.SetDefault(keyForce, defaultForce)
+	v.SetDefault(keyPass, defaultPass)
+	v.SetDefault(keyFileSrc, defaultFileSrc)
+	v.SetDefault(keyArchive, defaultArchive)
 
 	return &config{v: v}
 }
@@ -125,17 +141,26 @@ func (c *config) bindRootFlags(root *cobra.Command) {
 		"endpoint override, for the source in use")
 	flags.String(keySource, defaultSource,
 		"where to capture from: rpc or horizon")
+	flags.String(keyFileSrc, defaultFileSrc,
+		"read XDR dumps from this directory instead of the network")
+	flags.String(keyArchive, defaultArchive,
+		"history archive to fall back to for transactions older than the source keeps")
 	flags.Duration(keyTimeout, defaultTimeout,
 		"timeout for a single RPC call")
 	flags.String(keyColor, defaultColor,
 		`when to colourise output: "auto", "always" or "never"`)
+	flags.String(keyPass, defaultPass,
+		"network passphrase, for a network focus cannot name or a source that does not report one")
 
 	c.bind(flags, configFlag)
 	c.bind(flags, keyNetwork)
 	c.bind(flags, keyRPCURL)
 	c.bind(flags, keySource)
+	c.bind(flags, keyFileSrc)
+	c.bind(flags, keyArchive)
 	c.bind(flags, keyTimeout)
 	c.bind(flags, keyColor)
+	c.bind(flags, keyPass)
 }
 
 // bindCaptureFlags declares the flags shared by both capture subcommands.
@@ -152,11 +177,23 @@ func (c *config) bindCaptureFlags(cmd *cobra.Command) {
 		"overwrite fixture files that already exist")
 	flags.Bool(keyMask, defaultMask,
 		"replace public account addresses with deterministic mock accounts")
+	flags.Bool(keySanit, false,
+		"mask sensitive data: the same as --mask-memo --scrub-data --scrub-keys")
+	flags.Bool(keyMemo, false,
+		"replace text memos with "+capture.RedactedMemo)
+	flags.Bool(keyData, false,
+		"replace data entry values with "+capture.RedactedData)
+	flags.Bool(keyKeys, false,
+		"replace anything shaped like a secret key (S...) with "+capture.RedactedSecretKey)
 
 	c.bind(flags, keyOut)
 	c.bind(flags, keyPrefix)
 	c.bind(flags, keyForce)
 	c.bind(flags, keyMask)
+	c.bind(flags, keySanit)
+	c.bind(flags, keyMemo)
+	c.bind(flags, keyData)
+	c.bind(flags, keyKeys)
 }
 
 // bind attaches a declared flag to Viper. A missing flag is a programming
@@ -225,6 +262,18 @@ func (c *config) validate() error {
 	}
 	switch c.source() {
 	case sourceRPC, sourceHorizon:
+	case sourceFile:
+		dir := c.fileSource()
+		if dir == "" {
+			return usageErrorf("the file source needs a directory; give it with --file-source <dir>")
+		}
+		info, err := os.Stat(dir)
+		if err != nil {
+			return usageErrorf("file source: %v", err)
+		}
+		if !info.IsDir() {
+			return usageErrorf("file source %s is not a directory", dir)
+		}
 	default:
 		return usageErrorf(`source must be %q or %q, got %q`, sourceRPC, sourceHorizon, c.source())
 	}
@@ -250,9 +299,18 @@ func (c *config) network() string {
 	return strings.TrimSpace(c.v.GetString(keyNetwork))
 }
 
-// source is the capture source: rpc or horizon.
+// source is the capture source: rpc or horizon, or file when --file-source
+// names a directory of dumps.
 func (c *config) source() string {
+	if c.fileSource() != "" {
+		return sourceFile
+	}
 	return strings.TrimSpace(c.v.GetString(keySource))
+}
+
+// fileSource is the directory of XDR dumps to read instead of the network.
+func (c *config) fileSource() string {
+	return strings.TrimSpace(c.v.GetString(keyFileSrc))
 }
 
 // endpoint is the address the capture source talks to.
@@ -266,6 +324,8 @@ func (c *config) endpoint() (string, error) {
 		return capture.ResolveHorizonEndpoint(c.network(), c.rpcURL())
 	case sourceRPC:
 		return capture.ResolveEndpoint(c.network(), c.rpcURL())
+	case sourceFile:
+		return c.fileSource(), nil
 	default:
 		return "", fmt.Errorf("unknown source %q", c.source())
 	}
@@ -278,6 +338,17 @@ func (c *config) rpcURL() string {
 		return url
 	}
 	return strings.TrimSpace(c.v.GetString("rpc_url"))
+}
+
+// passphrase is the explicit network passphrase, empty when the source or
+// the network name is to decide it.
+func (c *config) passphrase() string {
+	return strings.TrimSpace(c.v.GetString(keyPass))
+}
+
+// archiveURL is the history archive to fall back to, empty for none.
+func (c *config) archiveURL() string {
+	return strings.TrimSpace(c.v.GetString(keyArchive))
 }
 
 // timeout bounds a single RPC call.
@@ -309,4 +380,15 @@ func (c *config) force() bool {
 // deterministic mock accounts.
 func (c *config) maskAddresses() bool {
 	return c.v.GetBool(keyMask)
+}
+
+// sanitizer is the masking capture applies before writing fixtures.
+// --sanitize turns every mask on; the individual flags pick some of them.
+func (c *config) sanitizer() capture.Sanitizer {
+	all := c.v.GetBool(keySanit)
+	return capture.Sanitizer{
+		MaskMemo:  all || c.v.GetBool(keyMemo),
+		ScrubData: all || c.v.GetBool(keyData),
+		ScrubKeys: all || c.v.GetBool(keyKeys),
+	}
 }
