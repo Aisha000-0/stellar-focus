@@ -10,6 +10,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -43,7 +44,8 @@ var newSource = func(kind, network, endpoint string, timeout time.Duration) capt
 	}
 }
 
-// openSource builds the configured capture source, bound to an explicit
+// openSource builds the configured capture source: falling back to a
+// history archive when --archive-url names one, and bound to an explicit
 // network passphrase when one was given.
 func openSource(cfg *config) (capture.Source, error) {
 	endpoint, err := cfg.endpoint()
@@ -51,6 +53,10 @@ func openSource(cfg *config) (capture.Source, error) {
 		return nil, usageErrorf("%v", err)
 	}
 	src := newSource(cfg.source(), cfg.network(), endpoint, cfg.timeout())
+	if url := cfg.archiveURL(); url != "" {
+		archive := capture.NewArchivalSource(cfg.network(), url, cfg.timeout())
+		src = capture.NewFallbackSource(src, archive)
+	}
 	return capture.WithPassphrase(src, cfg.passphrase()), nil
 }
 
@@ -164,6 +170,8 @@ func newCaptureCmd(cfg *config, stdout, stderr io.Writer) *cobra.Command {
 		Short: "Record real chain data as fixture files",
 	}
 
+	var ledger uint32
+
 	txCmd := &cobra.Command{
 		Use:   "tx <hash>",
 		Short: "Record a transaction's envelope, result and meta",
@@ -174,12 +182,21 @@ can be re-checked later with focus verify.
 A capture from a private or staging network may carry data that must not be
 committed. --sanitize masks text memos, data entry values and anything shaped
 like a secret key; --mask-memo, --scrub-data and --scrub-keys pick one each.
-A sanitized fixture no longer matches the chain, so verify skips it.`,
+A sanitized fixture no longer matches the chain, so verify skips it.
+
+RPC keeps only recent history. With --archive-url, a transaction RPC no
+longer has is read from a Stellar history archive instead; an archive is
+not indexed by hash, so give the ledger it closed in with --ledger. An
+archive holds envelopes and results but not transaction meta.`,
 		Example: `  focus capture tx 2b2e276a… --out testdata/
   focus capture tx 2b2e276a… --out testdata/ --prefix failed_payment
   focus capture tx 2b2e276a… --out testdata/ --sanitize
   focus capture tx 2b2e276a… --network standalone --rpc-url http://localhost:8000/rpc \
-    --passphrase "Standalone Network ; February 2017"`,
+    --passphrase "Standalone Network ; February 2017"
+
+  # A transaction older than RPC keeps, from the history archive
+  focus capture tx 2b2e276a… --network mainnet --ledger 3966820 \
+    --archive-url https://history.stellar.org/prd/core-live/core_live_001`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			src, err := openSource(cfg)
@@ -187,7 +204,10 @@ A sanitized fixture no longer matches the chain, so verify skips it.`,
 				return err
 			}
 
-			records, err := src.Transaction(cmd.Context(), args[0])
+			records, err := capture.FetchTransaction(cmd.Context(), src, args[0], ledger)
+			if errors.Is(err, capture.ErrLedgerRequired) {
+				return usageErrorf("%v\n(give the ledger the transaction closed in with --ledger)", err)
+			}
 			if err != nil {
 				return err
 			}
@@ -214,6 +234,9 @@ A sanitized fixture no longer matches the chain, so verify skips it.`,
 				cfg.outDir(), cfg.prefix(), cfg.force(), cfg.maskAddresses(), cfg.sanitizer(), stdout)
 		},
 	}
+
+	txCmd.Flags().Uint32Var(&ledger, "ledger", 0,
+		"ledger the transaction closed in; needed to find it in a history archive")
 
 	cfg.bindCaptureFlags(cmd)
 	cmd.AddCommand(txCmd, entryCmd)

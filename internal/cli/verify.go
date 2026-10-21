@@ -37,10 +37,15 @@ than silently passing.
 
 Paths may be files or directories. With no path, testdata is checked.
 
+With --archive-url, a fixture whose transaction RPC no longer keeps is
+checked against the history archive, using the ledger in its provenance.
+
 Exit status is 0 when every checked fixture still matches, 2 when at least one
 has drifted, and 1 when a fixture could not be checked at all.`,
 		Example: `  focus verify
-  focus verify testdata/ --network mainnet`,
+  focus verify testdata/ --network mainnet
+  focus verify testdata/ --network mainnet \
+    --archive-url https://history.stellar.org/prd/core-live/core_live_001`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) == 0 {
 				args = []string{defaultVerifyDir}

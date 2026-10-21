@@ -150,6 +150,12 @@ func (s *passphraseSource) NetworkPassphrase(ctx context.Context) (string, error
 	return s.passphrase, nil
 }
 
+// TransactionInLedger implements LedgerTransactionSource, so wrapping a
+// source that can use a ledger hint — an archive fallback — keeps the hint.
+func (s *passphraseSource) TransactionInLedger(ctx context.Context, hash string, ledger uint32) ([]Record, error) {
+	return FetchTransaction(ctx, s.Source, hash, ledger)
+}
+
 // Capture fetches items and turns them into fixtures, stamping each with the
 // provenance needed to verify or refresh it later.
 //
@@ -235,7 +241,7 @@ func Verify(ctx context.Context, src Source, path string, f *golden.Fixture) Ver
 		}
 	}
 
-	records, err := src.Transaction(ctx, f.Captured.TxHash)
+	records, err := FetchTransaction(ctx, src, f.Captured.TxHash, f.Captured.Ledger)
 	if err != nil {
 		result.Err = fmt.Errorf("re-fetching %s: %w", f.Captured.TxHash, err)
 		return result

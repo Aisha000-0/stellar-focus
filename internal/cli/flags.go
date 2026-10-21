@@ -58,6 +58,7 @@ const (
 	keyMemo    = "mask-memo"
 	keyData    = "scrub-data"
 	keyKeys    = "scrub-keys"
+	keyArchive = "archive-url"
 )
 
 // The capture sources the command can talk to.
@@ -84,6 +85,7 @@ const (
 	defaultMask    = false
 	defaultPass    = ""
 	defaultFileSrc = ""
+	defaultArchive = ""
 )
 
 // discoveredConfigFiles are checked, in order, when --config is not given.
@@ -121,6 +123,7 @@ func newConfig() *config {
 	v.SetDefault(keyForce, defaultForce)
 	v.SetDefault(keyPass, defaultPass)
 	v.SetDefault(keyFileSrc, defaultFileSrc)
+	v.SetDefault(keyArchive, defaultArchive)
 
 	return &config{v: v}
 }
@@ -140,6 +143,8 @@ func (c *config) bindRootFlags(root *cobra.Command) {
 		"where to capture from: rpc or horizon")
 	flags.String(keyFileSrc, defaultFileSrc,
 		"read XDR dumps from this directory instead of the network")
+	flags.String(keyArchive, defaultArchive,
+		"history archive to fall back to for transactions older than the source keeps")
 	flags.Duration(keyTimeout, defaultTimeout,
 		"timeout for a single RPC call")
 	flags.String(keyColor, defaultColor,
@@ -152,6 +157,7 @@ func (c *config) bindRootFlags(root *cobra.Command) {
 	c.bind(flags, keyRPCURL)
 	c.bind(flags, keySource)
 	c.bind(flags, keyFileSrc)
+	c.bind(flags, keyArchive)
 	c.bind(flags, keyTimeout)
 	c.bind(flags, keyColor)
 	c.bind(flags, keyPass)
@@ -338,6 +344,11 @@ func (c *config) rpcURL() string {
 // the network name is to decide it.
 func (c *config) passphrase() string {
 	return strings.TrimSpace(c.v.GetString(keyPass))
+}
+
+// archiveURL is the history archive to fall back to, empty for none.
+func (c *config) archiveURL() string {
+	return strings.TrimSpace(c.v.GetString(keyArchive))
 }
 
 // timeout bounds a single RPC call.
