@@ -186,7 +186,10 @@ func TestFileSourceVerifiesOffline(t *testing.T) {
 	dir := t.TempDir()
 	writeDump(t, dir, dumpHash+".envelope.xdr", []byte(f.XDR))
 
-	got := capture.Verify(context.Background(), capture.NewFileSource(dir), "envelope.golden.json", f)
+	// The dumps are named for the network they came from, so the source can
+	// vouch for the passphrase the fixture is bound to.
+	src := capture.NewFileSource(dir).ForNetwork(capture.NetworkTestnet)
+	got := capture.Verify(context.Background(), src, "envelope.golden.json", f)
 	if got.Err != nil || !got.Match {
 		t.Errorf("Verify() = %+v, want a match against the dump", got)
 	}
