@@ -16,10 +16,10 @@ type Option func(*config)
 type config struct {
 	// ignore lists path patterns whose differences are not failures.
 	ignore []string
-	// sortPatterns are path patterns whose arrays are treated as unordered
-	// sets. When enabled, arrays at matching paths are sorted before the
-	// comparison so that [sigA, sigB] and [sigB, sigA] are equal.
-	sortPatterns []string
+	// sorters are path patterns whose arrays are treated as unordered sets.
+	// When enabled, arrays at matching paths are sorted before the comparison
+	// so that [sigA, sigB] and [sigB, sigA] are equal.
+	sorters []sorter
 	// normalize maps a path pattern to a function rewriting matching values
 	// before comparison.
 	normalize []normalizer
@@ -33,6 +33,14 @@ type config struct {
 type normalizer struct {
 	pattern string
 	fn      func(any) any
+}
+
+// sorter describes one array treated as an unordered set.
+type sorter struct {
+	pattern string
+	// keyFn extracts the lexicographic key of an element. When nil, the
+	// element's canonical rendering is used, which orders elements as wholes.
+	keyFn func(elem any) string
 }
 
 func newConfig(opts ...Option) *config {
@@ -114,29 +122,59 @@ func NormalizePath(pattern string, fn func(any) any) Option {
 	}
 }
 
-// SortPath tells the comparison to treat the array at matching paths as an
+// SortPath tells the comparison to treat the array at a matching path as an
 // unordered set.
 //
 // XDR arrays are ordered for a reason — operations run in the order they
 // appear — but a few are not: the signatures on a multi-signed transaction
-// arrive in whichever order the signers signed in. Comparing those
-// positionally reports one difference per element for what is really the
-// same envelope.
+// arrive in whichever order the signers signed in, and the keys in a Soroban
+// footprint are a set. Comparing those positionally reports one difference per
+// element for what is really the same value.
 //
 //	focus.SortPath("**.Signatures")
 //
+// By default an element's whole canonical rendering is its key, which is
+// enough when elements are compared as wholes. When the array has a natural
+// identity, keyFn names it: it receives the decoded element as a *lens.Node
+// and returns the string to sort by.
+//
+//	focus.SortPath("**.Signers", func(elem any) string {
+//	    n, _ := elem.(*lens.Node)
+//	    return n.Child("Key").String()
+//	})
+//
 // The arrays at the matching paths are sorted before the two values are
-// diffed, so [sigA, sigB] and [sigB, sigA] compare equal. Everything else
-// about the envelope is still compared the usual way: a missing signature is
-// still a difference.
+// diffed, so [sigA, sigB] and [sigB, sigA] compare equal. Everything else is
+// still compared the usual way: a missing signature is still a difference.
 //
 // The paths that were treated as unordered sets are named in the failure
 // message, and a pattern that matches no array at all is reported as
 // probably stale, because a rule that quietly does nothing is how a test
 // starts passing for the wrong reason.
-func SortPath(patterns ...string) Option {
+func SortPath(pattern string, keyFn ...func(elem any) string) Option {
 	return func(c *config) {
-		c.sortPatterns = append(c.sortPatterns, patterns...)
+		s := sorter{pattern: pattern}
+		if len(keyFn) > 0 {
+			s.keyFn = keyFn[0]
+		}
+		c.sorters = append(c.sorters, s)
+	}
+}
+
+// SortSigners treats the signers on an account as an unordered set.
+//
+// A signer list is a set: which key has which weight is meaningful, but the
+// order the entries happen to be stored in is not.
+func SortSigners() Option {
+	return SortPath("**.Signers")
+}
+
+// SortFootprint treats the read-only and read-write keys of a Soroban ledger
+// footprint as unordered sets.
+func SortFootprint() Option {
+	return func(c *config) {
+		SortPath("**.Footprint.ReadOnly")(c)
+		SortPath("**.Footprint.ReadWrite")(c)
 	}
 }
 
@@ -156,7 +194,7 @@ type sortResult struct {
 // decoded value it still holds — a *lens.Value is an accepted input — and an
 // assertion must not reorder somebody else's data.
 func (c *config) sortValues(want, got *lens.Value) (*lens.Value, *lens.Value, sortResult) {
-	if len(c.sortPatterns) == 0 {
+	if len(c.sorters) == 0 {
 		return want, got, sortResult{}
 	}
 
@@ -164,8 +202,8 @@ func (c *config) sortValues(want, got *lens.Value) (*lens.Value, *lens.Value, so
 	gotCopy := &lens.Value{Type: got.Type, Node: cloneNode(got.Node), Raw: got.Raw}
 
 	var unordered []string
-	unordered = append(unordered, sortNode(wantCopy.Node, "", c.sortPatterns)...)
-	unordered = append(unordered, sortNode(gotCopy.Node, "", c.sortPatterns)...)
+	unordered = append(unordered, sortNode(wantCopy.Node, "", c.sorters)...)
+	unordered = append(unordered, sortNode(gotCopy.Node, "", c.sorters)...)
 
 	paths := listPaths(wantCopy.Node, "", nil)
 	paths = listPaths(gotCopy.Node, "", paths)
@@ -176,13 +214,13 @@ func (c *config) sortValues(want, got *lens.Value) (*lens.Value, *lens.Value, so
 	}
 }
 
-// sortNode sorts the children of every list at a path matching one of the
-// patterns, and returns the paths it sorted.
+// sortNode sorts the children of every list at a path matching a sorter, and
+// returns the paths it sorted.
 //
-// The order is by canonical rendering rather than by any one field, because
-// an unordered array has no field that identifies its elements: the elements
-// are compared as wholes.
-func sortNode(n *lens.Node, path string, patterns []string) []string {
+// The order is by the sorter's key function, or by canonical rendering when
+// it has none, because an unordered array has no field that identifies its
+// elements unless one is supplied: the elements are compared as wholes.
+func sortNode(n *lens.Node, path string, sorters []sorter) []string {
 	if n == nil {
 		return nil
 	}
@@ -190,21 +228,41 @@ func sortNode(n *lens.Node, path string, patterns []string) []string {
 	var sorted []string
 	switch n.Kind {
 	case lens.KindList:
-		if matchesAnyPattern(patterns, path) {
+		for _, s := range sorters {
+			if !matchPath(s.pattern, path) {
+				continue
+			}
 			sort.SliceStable(n.Children, func(i, j int) bool {
-				return canonicalKey(n.Children[i]) < canonicalKey(n.Children[j])
+				return sortKey(n.Children[i], s.keyFn) < sortKey(n.Children[j], s.keyFn)
 			})
 			sorted = append(sorted, path)
 		}
 		for i, child := range n.Children {
-			sorted = append(sorted, sortNode(child, fmt.Sprintf("%s[%d]", path, i), patterns)...)
+			sorted = append(sorted, sortNode(child, fmt.Sprintf("%s[%d]", path, i), sorters)...)
 		}
 	case lens.KindStruct:
 		for _, child := range n.Children {
-			sorted = append(sorted, sortNode(child, joinPath(path, child.Name), patterns)...)
+			sorted = append(sorted, sortNode(child, joinPath(path, child.Name), sorters)...)
 		}
 	}
 	return sorted
+}
+
+// sortKey extracts the sort key of one array element.
+//
+// A key function is user code, and assertions do not panic: if it panics or
+// returns nothing useful, the element's canonical rendering is used instead so
+// the comparison can still be made.
+func sortKey(n *lens.Node, keyFn func(any) string) (key string) {
+	if keyFn == nil {
+		return canonicalKey(n)
+	}
+	defer func() {
+		if recover() != nil {
+			key = canonicalKey(n)
+		}
+	}()
+	return keyFn(n)
 }
 
 // listPaths collects the paths of every list in a tree.
@@ -237,16 +295,16 @@ func listPaths(n *lens.Node, path string, out []string) []string {
 // test starts passing for the wrong reason.
 func (c *config) unusedSorts(paths []string) []string {
 	var unused []string
-	for _, pattern := range c.sortPatterns {
+	for _, s := range c.sorters {
 		var hit bool
 		for _, path := range paths {
-			if matchPath(pattern, path) {
+			if matchPath(s.pattern, path) {
 				hit = true
 				break
 			}
 		}
 		if !hit {
-			unused = append(unused, pattern)
+			unused = append(unused, s.pattern)
 		}
 	}
 	return unused
@@ -320,16 +378,6 @@ func joinPath(path, name string) string {
 	default:
 		return path + "." + name
 	}
-}
-
-// matchesAnyPattern reports whether a path matches any of the patterns.
-func matchesAnyPattern(patterns []string, path string) bool {
-	for _, pattern := range patterns {
-		if matchPath(pattern, path) {
-			return true
-		}
-	}
-	return false
 }
 
 // dedupe removes repeated entries, keeping the order they came in.

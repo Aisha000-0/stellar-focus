@@ -7,7 +7,9 @@ An honest account of where this is going. Dates are intentions, not commitments.
 Working and tested:
 
 - Structural equality assertions for envelopes, results and metas, with
-  failure output that names the changed field path
+  failure output that names the changed field path, plus a round-trip
+  assertion that re-encodes a value and diffs the two decoded trees so a
+  lossy encoder is reported by field rather than by base64
 - Field assertions: source, fee, sequence, memo, operation counts and types,
   signature count, fee-bump, and the source account an individual operation
   names — including the account it falls back to when it names none
@@ -44,7 +46,15 @@ Working and tested:
   response or from a result/meta fixture pair with no network call
 - Soroban diagnostic streams: the order of a contract call's diagnostic events
   — call frames, logs, and the events of calls that failed — and the ledger the
-  stream was emitted in, with that ledger's close time
+  stream was emitted in, with that ledger's close time; a single diagnostic
+  event can also be matched directly, and the decorated stream is available
+  through `DiagnosticEvents`
+- Ledger key builders: `pkg/ledgerkey` constructs account, trustline, contract
+  data and contract code keys as the base64 XDR capture expects, and
+  `AssertLedgerKeyEqual` compares one against a key read from a meta or fixture
+- Set comparison for unordered XDR arrays, with an optional key function for
+  arrays whose elements have a natural identity, and the `SortSigners` and
+  `SortFootprint` wrappers for the two common cases
 - Soroban simulation resource budgets, from either the transaction's
   `SorobanTransactionData` or a simulate-transaction response
 - Contract deployment state: the storage a `__constructor` writes — instance,
@@ -177,9 +187,6 @@ Known limits, stated plainly:
   anchors, aliases, tags, block scalars and multi-document streams are rejected
   with a message naming the line. JSON remains the default and the format every
   existing fixture is written in.
-- **Ledger entry capture is thin.** `focus capture ledger-entry` records the
-  entry data but has no convenience for constructing the `LedgerKey` you need
-  to pass it.
 - **A meta cannot fully describe a trade.** It records the offers that changed,
   so the amount a matched offer gave up is exact while what it was paid is not
   recorded at all, and an owner reducing their own offer is indistinguishable
