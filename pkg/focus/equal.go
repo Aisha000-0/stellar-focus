@@ -176,7 +176,7 @@ func assertEqual(t TB, assertion, typeName string, want, got Value, opts ...Opti
 		return false
 	}
 	if diffErr != nil {
-		t.Errorf("%s: comparing values: %v", assertion, diffErr)
+		t.Errorf("%s: comparing values: %v", c.assertionName(assertion), diffErr)
 		return false
 	}
 
@@ -189,14 +189,14 @@ func assertEqual(t TB, assertion, typeName string, want, got Value, opts ...Opti
 		// anyone would notice is now.
 		if unused := c.unusedIgnores(changes); len(unused) > 0 {
 			t.Errorf("%s: values match, but these ignore patterns matched nothing "+
-				"and are probably stale: %v", assertion, unused)
+				"and are probably stale: %v", c.assertionName(assertion), unused)
 			return false
 		}
 		// The same goes for a sort rule that matched no array: it compared
 		// nothing as an unordered set, which is not what it says it does.
 		if len(sorts.stale) > 0 {
 			t.Errorf("%s: values match, but these sort patterns matched no array "+
-				"and are probably stale: %v", assertion, sorts.stale)
+				"and are probably stale: %v", c.assertionName(assertion), sorts.stale)
 			return false
 		}
 		return true

@@ -46,14 +46,15 @@ func summarize(t TB, assertion string, v Value, typeName string) (*lens.Summary,
 // A fee-bump envelope is read through to the inner transaction, so this is
 // the account the inner transaction is sourced from — the account the
 // protocol charges the fee to.
-func AssertSourceAccount(t TB, envelope Value, want string) bool {
+func AssertSourceAccount(t TB, envelope Value, want string, opts ...Option) bool {
 	t.Helper()
+	c := newConfig(opts...)
 	s, ok := summarize(t, "AssertSourceAccount", envelope, "TransactionEnvelope")
 	if !ok {
 		return false
 	}
 	if s.Source != want {
-		t.Errorf("%s", mismatchMessage("AssertSourceAccount", "source account", want, s.Source))
+		t.Errorf("%s", mismatchMessage("AssertSourceAccount", "source account", want, s.Source, c))
 		return false
 	}
 	return true
@@ -74,14 +75,15 @@ func AssertFee(t TB, envelope Value, want int64) bool {
 }
 
 // AssertSequence checks the transaction's sequence number.
-func AssertSequence(t TB, envelope Value, want int64) bool {
+func AssertSequence(t TB, envelope Value, want int64, opts ...Option) bool {
 	t.Helper()
+	c := newConfig(opts...)
 	s, ok := summarize(t, "AssertSequence", envelope, "TransactionEnvelope")
 	if !ok {
 		return false
 	}
 	if s.SeqNum != want {
-		t.Errorf("%s", mismatchMessage("AssertSequence", "sequence number", want, s.SeqNum))
+		t.Errorf("%s", mismatchMessage("AssertSequence", "sequence number", want, s.SeqNum, c))
 		return false
 	}
 	return true
@@ -95,14 +97,15 @@ func AssertSequence(t TB, envelope Value, want int64) bool {
 //
 // A fee-bump envelope is read through to the inner transaction, so this is
 // the inner transaction's memo.
-func AssertMemo(t TB, envelope Value, want string) bool {
+func AssertMemo(t TB, envelope Value, want string, opts ...Option) bool {
 	t.Helper()
+	c := newConfig(opts...)
 	s, ok := summarize(t, "AssertMemo", envelope, "TransactionEnvelope")
 	if !ok {
 		return false
 	}
 	if s.Memo != want {
-		msg := mismatchMessage("AssertMemo", "memo", want, s.Memo)
+		msg := mismatchMessage("AssertMemo", "memo", want, s.Memo, c)
 		if want != "" && !strings.Contains(want, ":") {
 			msg += "\n(memos are written as \"text: …\", \"id: …\" or \"hash: …\")"
 		}
@@ -173,14 +176,15 @@ func AssertOperationType(t TB, envelope Value, index int, want string) bool {
 }
 
 // AssertSignatureCount checks how many signatures the envelope carries.
-func AssertSignatureCount(t TB, envelope Value, want int) bool {
+func AssertSignatureCount(t TB, envelope Value, want int, opts ...Option) bool {
 	t.Helper()
+	c := newConfig(opts...)
 	s, ok := summarize(t, "AssertSignatureCount", envelope, "TransactionEnvelope")
 	if !ok {
 		return false
 	}
 	if s.SignatureCt != want {
-		t.Errorf("%s", mismatchMessage("AssertSignatureCount", "signature count", want, s.SignatureCt))
+		t.Errorf("%s", mismatchMessage("AssertSignatureCount", "signature count", want, s.SignatureCt, c))
 		return false
 	}
 	return true
@@ -204,9 +208,10 @@ func AssertSignatureCount(t TB, envelope Value, want int) bool {
 // A muxed source account is reported in its "M…" form. The account it is a
 // muxed form of is accepted as well, because the muxed id says which account
 // was used, not whose account it is.
-func AssertOperationSourceAccount(t TB, envelope Value, opIndex int, want string) bool {
+func AssertOperationSourceAccount(t TB, envelope Value, opIndex int, want string, opts ...Option) bool {
 	t.Helper()
 	const assertion = "AssertOperationSourceAccount"
+	c := newConfig(opts...)
 
 	env, _, ok := envelopeFrom(t, assertion, envelope)
 	if !ok {
@@ -225,7 +230,7 @@ func AssertOperationSourceAccount(t TB, envelope Value, opIndex int, want string
 	}
 	if opIndex < 0 || opIndex >= len(ops) {
 		t.Errorf("%s: no operation at index %d; the transaction has %d operation(s)",
-			assertion, opIndex, len(ops))
+			c.assertionName(assertion), opIndex, len(ops))
 		return false
 	}
 
@@ -236,19 +241,20 @@ func AssertOperationSourceAccount(t TB, envelope Value, opIndex int, want string
 		}
 		t.Errorf("%s: operation %d names no source account of its own, so it is sourced from the "+
 			"transaction's source account %s.\nPass an empty want to assert that the operation names "+
-			"no source account of its own.", assertion, opIndex, txSource)
+			"no source account of its own.", c.assertionName(assertion), opIndex, txSource)
 		return false
 	}
 
 	names, err := muxedAccountNames(*source)
 	if err != nil {
-		t.Errorf("%s: operation %d has a source account that could not be read: %v", assertion, opIndex, err)
+		t.Errorf("%s: operation %d has a source account that could not be read: %v",
+			c.assertionName(assertion), opIndex, err)
 		return false
 	}
 
 	if want == "" {
 		t.Errorf("%s: operation %d is sourced from %s, want no source account of its own",
-			assertion, opIndex, names[0])
+			c.assertionName(assertion), opIndex, names[0])
 		return false
 	}
 	for _, name := range names {
@@ -258,7 +264,7 @@ func AssertOperationSourceAccount(t TB, envelope Value, opIndex int, want string
 	}
 
 	t.Errorf("%s", mismatchMessage(assertion,
-		fmt.Sprintf("source account of operation %d", opIndex), want, names[0]))
+		fmt.Sprintf("source account of operation %d", opIndex), want, names[0], c))
 	return false
 }
 

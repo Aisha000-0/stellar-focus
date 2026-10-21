@@ -305,14 +305,23 @@ differs in its sequence number, signatures and time bounds every run.
 focus.IgnoreVolatile()      // sequence + signatures + time bounds
 focus.IgnoreSequence()
 focus.IgnoreSignatures()
+focus.IgnoreSorobanAuth()   // volatile Soroban authorization credentials
 focus.IgnorePaths("**.Signatures", "operations[*].sourceaccount")
 focus.NormalizePath("**.SeqNum", func(v any) any { return v.(int64) / 100 * 100 })
 ```
+
+Soroban authorization entries carry a nonce and a signature that are fresh on
+every run. `IgnoreSorobanAuth` suppresses the credentials tree while still
+comparing the authorized invocation, and discloses the ignored credential
+paths in the failure output like any other ignore rule.
 
 Patterns match the dotted paths lens reports: `*` is one segment, `**` is any
 depth, and indexes accept `[*]`. Within a segment, `*`, `?` and `[abc]`/`[!abc]`
 classes work like globs; matching is case-insensitive and patterns are anchored
 to the tail of a path too, so `operations[*].sourceaccount` needs no prefix.
+Patterns are validated when the option is built, so an unclosed bracket, empty
+segment or invalid index panics immediately instead of silently matching
+nothing.
 
 Two deliberate behaviours:
 
@@ -321,6 +330,42 @@ Two deliberate behaviours:
 - **An ignore pattern that matches nothing is reported as a failure**, even
   when the values are otherwise equal. A stale pattern is a test quietly
   weakening, and this is the only moment anyone would notice.
+
+### Normalizing dynamic addresses
+
+Accounts and contracts generated per run have different strkeys every time.
+Ignoring every source account makes the comparison pass but stops proving who
+paid whom, so map the generated keys to stable names instead:
+
+```go
+focus.AssertEnvelopeEqual(t, want, got, focus.NormalizeAddress(map[string]string{
+	aliceKey: "ALICE_ADDRESS",
+	bobKey:   "BOB_ADDRESS",
+}))
+```
+
+`NormalizeAddress` rewrites source accounts, destinations, account fields and
+contract IDs before the diff. Contract IDs are held as `C…` strkeys but lens
+renders them as hex, so both spellings resolve to the same alias. Everything
+else is still compared normally.
+
+### Naming the step that failed
+
+An assertion in a loop or a multi-step flow can say which step produced the
+failure:
+
+```go
+focus.AssertEnvelopeEqual(t, want, got, focus.WithLabel("step 3: fee refund"))
+```
+
+The label appears beside the assertion name in the headline:
+
+```
+AssertEnvelopeEqual [step 3: fee refund]: envelopes differ — 1 difference
+```
+
+The same option works with `focus/require`, `golden.WithOptions` and the
+golden `require` package, because they all forward assertion options.
 
 ### Comparing arrays as sets
 

@@ -1,12 +1,14 @@
 package focus
 
 import (
+	"encoding/hex"
 	"fmt"
 	"sort"
 	"strings"
 
 	"github.com/stellar-optics/stellar-xdr-lens/pkg/lens"
 	lensformat "github.com/stellar-optics/stellar-xdr-lens/pkg/lens/format"
+	"github.com/stellar/go-stellar-sdk/strkey"
 )
 
 // Option configures an assertion.
@@ -28,6 +30,9 @@ type config struct {
 	// maxChanges caps how many differences are printed before the rest are
 	// summarised.
 	maxChanges int
+	// label names the step or scenario an assertion belongs to. When set, it
+	// is shown beside the assertion name in every failure message.
+	label string
 }
 
 type normalizer struct {
@@ -68,7 +73,16 @@ func newConfig(opts ...Option) *config {
 //
 // Ignored paths are always named in the failure output. A silently discarded
 // difference is how an assertion library stops being trustworthy.
+//
+// Patterns are validated when the option is constructed. A malformed pattern
+// panics immediately, rather than silently matching nothing and surfacing
+// later as a confusing stale-pattern failure.
 func IgnorePaths(patterns ...string) Option {
+	for _, pattern := range patterns {
+		if err := validatePattern(pattern); err != nil {
+			panic(fmt.Sprintf("focus.IgnorePaths: invalid path pattern %q: %v", pattern, err))
+		}
+	}
 	return func(c *config) { c.ignore = append(c.ignore, patterns...) }
 }
 
@@ -110,15 +124,144 @@ func IgnoreVolatile() Option {
 	}
 }
 
+// IgnoreSorobanAuth ignores the credential tree of Soroban authorization
+// entries, which is rebuilt with a fresh nonce and signature on every run.
+//
+// The credentials of an auth entry contain the address, the nonce, the
+// signature-expiration ledger and the signature itself. They are volatile by
+// design: a test that compares the invocation envelope a builder produced
+// should not fail because the nonce advanced or the signature was made with a
+// freshly generated key.
+//
+// The invocation itself — the function being authorized and its
+// sub-invocations — is still compared, so this only suppresses the
+// credentials and not the thing the test is asserting.
+//
+// The ignored paths are disclosed in the failure message like any other
+// ignore rule. The concrete paths lens reports place the entries under the
+// operation's Auth array:
+//
+//	**.Auth[*].Credentials.**
+//	**.Credentials.**
+func IgnoreSorobanAuth() Option {
+	return IgnorePaths(
+		"**.Auth[*].Credentials.**",
+		"**.Credentials.**",
+	)
+}
+
+// WithLabel names the step or scenario an assertion belongs to, so a failure
+// inside a loop, a sub-test or a multi-step integration flow says which one
+// failed:
+//
+//	focus.AssertEnvelopeEqual(t, want, got, focus.WithLabel("step 3: fee refund"))
+//
+// The label appears beside the assertion name in the failure headline. An
+// empty label is the same as not setting one.
+func WithLabel(label string) Option {
+	return func(c *config) { c.label = label }
+}
+
+// assertionName renders an assertion's name with the configured label.
+func (c *config) assertionName(assertion string) string {
+	if c == nil || c.label == "" {
+		return assertion
+	}
+	return fmt.Sprintf("%s [%s]", assertion, c.label)
+}
+
 // NormalizePath rewrites values at matching paths before they are compared,
 // for cases an ignore rule is too blunt for.
 //
 // The function receives the decoded scalar and returns the value to compare,
 // so a timestamp can be rounded or an address mapped to a placeholder rather
 // than dropped entirely.
+//
+// Like IgnorePaths, the pattern is validated when the option is constructed,
+// and a malformed pattern panics immediately.
 func NormalizePath(pattern string, fn func(any) any) Option {
+	if err := validatePattern(pattern); err != nil {
+		panic(fmt.Sprintf("focus.NormalizePath: invalid path pattern %q: %v", pattern, err))
+	}
 	return func(c *config) {
 		c.normalize = append(c.normalize, normalizer{pattern: pattern, fn: fn})
+	}
+}
+
+// NormalizeAddress maps dynamic strkey addresses to stable symbolic aliases
+// before comparison.
+//
+// Integration tests generate accounts and contracts per run, so the same
+// transaction carries different addresses every time. Ignoring every source
+// account makes the comparison pass but no longer proves who paid whom;
+// mapping the generated keys to names keeps the direction of the transfer
+// meaningful:
+//
+//	focus.AssertEnvelopeEqual(t, want, got, focus.NormalizeAddress(map[string]string{
+//	    aliceKey: "ALICE_ADDRESS",
+//	    bobKey:   "BOB_ADDRESS",
+//	}))
+//
+// Source accounts, destinations, account fields and contract IDs are
+// normalized. Contract IDs are rendered by lens as hex rather than strkey, so
+// a contract strkey in the mapping is matched in both forms.
+func NormalizeAddress(mapping map[string]string) Option {
+	aliases := make(map[string]string, len(mapping)*2)
+	for address, alias := range mapping {
+		aliases[address] = alias
+		// A contract ID is rendered as hex in lens paths, while callers hold
+		// it as a C... strkey. Register the decoded form as well so both
+		// spellings resolve to the same alias.
+		if version, payload, err := strkey.DecodeAny(address); err == nil &&
+			version == strkey.VersionByteContract {
+			aliases[hex.EncodeToString(payload)] = alias
+		}
+	}
+
+	normalize := func(v any) any {
+		address, ok := v.(string)
+		if !ok {
+			return v
+		}
+		if alias, ok := aliases[address]; ok {
+			return alias
+		}
+		if alias, ok := aliases[strings.ToLower(address)]; ok {
+			return alias
+		}
+
+		// A muxed account carries the same public key as its G... form, so
+		// let a mapping for the account also cover its muxed spelling.
+		version, payload, err := strkey.DecodeAny(address)
+		if err != nil {
+			return v
+		}
+		switch version {
+		case strkey.VersionByteContract:
+			if alias, ok := aliases[hex.EncodeToString(payload)]; ok {
+				return alias
+			}
+		case strkey.VersionByteMuxedAccount:
+			account, err := strkey.Encode(strkey.VersionByteAccountID, payload[:32])
+			if err == nil {
+				if alias, ok := aliases[account]; ok {
+					return alias
+				}
+			}
+		}
+		return v
+	}
+
+	return func(c *config) {
+		for _, pattern := range []string{
+			"**.SourceAccount",
+			"**.Destination",
+			"**.Account",
+			"**.AccountId",
+			"**.ContractID",
+		} {
+			NormalizePath(pattern, normalize)(c)
+		}
 	}
 }
 
@@ -378,6 +521,190 @@ func joinPath(path, name string) string {
 	default:
 		return path + "." + name
 	}
+}
+
+// validatePattern checks the syntax of a dotted path pattern.
+//
+// The matcher is deliberately forgiving at match time, which is convenient for
+// a well-formed pattern but turn a typo into a rule that silently matches
+// nothing. Validation at construction time turns the typo into an immediate,
+// explained panic instead: an unclosed bracket, an empty segment, an invalid
+// index or a nonsense wildcard run.
+func validatePattern(pattern string) error {
+	if pattern == "" {
+		return fmt.Errorf("pattern is empty")
+	}
+	if strings.HasPrefix(pattern, ".") || strings.HasSuffix(pattern, ".") {
+		return fmt.Errorf("pattern has an empty segment")
+	}
+
+	for _, segment := range strings.Split(pattern, ".") {
+		if segment == "" {
+			return fmt.Errorf("pattern has an empty segment")
+		}
+		if err := validateSegment(segment); err != nil {
+			return fmt.Errorf("segment %q: %w", segment, err)
+		}
+	}
+	return nil
+}
+
+// validateSegment checks one dot-separated pattern segment.
+func validateSegment(segment string) error {
+	// "**" means any depth, but three or more stars is a typo rather than a
+	// stronger wildcard: the matcher collapses runs, so it would be
+	// indistinguishable from "**".
+	if strings.Contains(segment, "***") {
+		return fmt.Errorf("invalid wildcard combination %q", segment)
+	}
+
+	firstOpen := -1
+	depth := 0
+	for i := 0; i < len(segment); i++ {
+		switch segment[i] {
+		case '[':
+			if depth == 0 && firstOpen < 0 {
+				firstOpen = i
+			}
+			depth++
+		case ']':
+			if depth == 0 {
+				return fmt.Errorf("unmatched ']'")
+			}
+			depth--
+		}
+	}
+	if depth != 0 {
+		return fmt.Errorf("unclosed '['")
+	}
+
+	// A trailing bracket group is an index to the matcher, not a glob class.
+	if firstOpen >= 0 && strings.HasSuffix(segment, "]") {
+		name := segment[:firstOpen]
+		if name == "" {
+			return fmt.Errorf("index has no segment name")
+		}
+		if err := validateName(name); err != nil {
+			return err
+		}
+		return validateIndex(segment[firstOpen+1 : len(segment)-1])
+	}
+
+	return validateName(segment)
+}
+
+// validateName checks the name part of a segment, allowing identifier
+// characters and glob wildcards outside character classes.
+func validateName(name string) error {
+	if name == "" {
+		return fmt.Errorf("segment name is empty")
+	}
+
+	depth := 0
+	classLen := 0
+	for i := 0; i < len(name); i++ {
+		c := name[i]
+		switch c {
+		case '[':
+			if depth == 0 {
+				classLen = 0
+			}
+			depth++
+			if depth > 1 {
+				classLen++
+			}
+		case ']':
+			if depth == 0 {
+				return fmt.Errorf("unmatched ']' in segment name")
+			}
+			depth--
+			if depth == 0 && classLen == 0 {
+				return fmt.Errorf("empty character class")
+			}
+		default:
+			if depth > 0 {
+				classLen++
+				continue
+			}
+			if !isIdentifierByte(c) && c != '*' && c != '?' {
+				return fmt.Errorf("invalid character %q in segment name", c)
+			}
+		}
+	}
+	if depth != 0 {
+		return fmt.Errorf("unclosed '[' in segment name")
+	}
+	return nil
+}
+
+// validateIndex checks one array index expression. An index is an integer, a
+// glob that can match an integer, a character class, or a negated form of any
+// of those.
+func validateIndex(index string) error {
+	if index == "" {
+		return fmt.Errorf("empty index")
+	}
+
+	if index[0] == '[' {
+		if !strings.HasSuffix(index, "]") {
+			return fmt.Errorf("invalid character class %q", index)
+		}
+		if len(index) == 2 {
+			return fmt.Errorf("empty character class")
+		}
+		return nil
+	}
+
+	if index[0] == '!' || index[0] == '^' {
+		if len(index) == 1 {
+			return fmt.Errorf("negated index has no value")
+		}
+		return validateIndex(index[1:])
+	}
+
+	depth := 0
+	classLen := 0
+	for i := 0; i < len(index); i++ {
+		c := index[i]
+		switch c {
+		case '[':
+			if depth == 0 {
+				classLen = 0
+			}
+			depth++
+			if depth > 1 {
+				classLen++
+			}
+		case ']':
+			if depth == 0 {
+				return fmt.Errorf("unmatched ']' in index")
+			}
+			depth--
+			if depth == 0 && classLen == 0 {
+				return fmt.Errorf("empty character class in index")
+			}
+		default:
+			if depth > 0 {
+				classLen++
+				continue
+			}
+			if (c < '0' || c > '9') && c != '*' && c != '?' {
+				return fmt.Errorf("invalid index wildcard %q", c)
+			}
+		}
+	}
+	if depth != 0 {
+		return fmt.Errorf("unclosed '[' in index")
+	}
+	return nil
+}
+
+// isIdentifierByte reports whether c may appear in an XDR field name.
+func isIdentifierByte(c byte) bool {
+	return c >= 'a' && c <= 'z' ||
+		c >= 'A' && c <= 'Z' ||
+		c >= '0' && c <= '9' ||
+		c == '_'
 }
 
 // dedupe removes repeated entries, keeping the order they came in.
