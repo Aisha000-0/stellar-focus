@@ -15,6 +15,9 @@ permissions:
   contents: read
 
 env:
+  # The single-platform jobs (lint, library, typescript-check) use these; the
+  # build and test jobs take their Go version from the matrix instead.
+  GO_VERSION: "1.25.x"
   NODE_VERSION: "20"
 
 # Every run step is bash on every runner, so the same script works on Windows
