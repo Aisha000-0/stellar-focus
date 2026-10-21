@@ -52,6 +52,7 @@ const (
 	keyPrefix  = "prefix"
 	keyForce   = "force"
 	keyMask    = "mask-addresses"
+	keyFileSrc = "file-source"
 )
 
 // The capture sources the command can talk to.
@@ -60,6 +61,9 @@ const (
 	sourceRPC = "rpc"
 	// sourceHorizon captures from a Horizon REST endpoint.
 	sourceHorizon = "horizon"
+	// sourceFile replays XDR dumps from a local directory. It is chosen by
+	// --file-source rather than --source, since it needs a directory.
+	sourceFile = "file"
 )
 
 // Defaults, declared once so a flag and a config fallback cannot drift apart.
@@ -73,6 +77,7 @@ const (
 	defaultPrefix  = ""
 	defaultForce   = false
 	defaultMask    = false
+	defaultFileSrc = ""
 )
 
 // discoveredConfigFiles are checked, in order, when --config is not given.
@@ -108,6 +113,7 @@ func newConfig() *config {
 	v.SetDefault(keyOut, defaultOutDir)
 	v.SetDefault(keyPrefix, defaultPrefix)
 	v.SetDefault(keyForce, defaultForce)
+	v.SetDefault(keyFileSrc, defaultFileSrc)
 
 	return &config{v: v}
 }
@@ -125,6 +131,8 @@ func (c *config) bindRootFlags(root *cobra.Command) {
 		"endpoint override, for the source in use")
 	flags.String(keySource, defaultSource,
 		"where to capture from: rpc or horizon")
+	flags.String(keyFileSrc, defaultFileSrc,
+		"read XDR dumps from this directory instead of the network")
 	flags.Duration(keyTimeout, defaultTimeout,
 		"timeout for a single RPC call")
 	flags.String(keyColor, defaultColor,
@@ -134,6 +142,7 @@ func (c *config) bindRootFlags(root *cobra.Command) {
 	c.bind(flags, keyNetwork)
 	c.bind(flags, keyRPCURL)
 	c.bind(flags, keySource)
+	c.bind(flags, keyFileSrc)
 	c.bind(flags, keyTimeout)
 	c.bind(flags, keyColor)
 }
@@ -225,6 +234,18 @@ func (c *config) validate() error {
 	}
 	switch c.source() {
 	case sourceRPC, sourceHorizon:
+	case sourceFile:
+		dir := c.fileSource()
+		if dir == "" {
+			return usageErrorf("the file source needs a directory; give it with --file-source <dir>")
+		}
+		info, err := os.Stat(dir)
+		if err != nil {
+			return usageErrorf("file source: %v", err)
+		}
+		if !info.IsDir() {
+			return usageErrorf("file source %s is not a directory", dir)
+		}
 	default:
 		return usageErrorf(`source must be %q or %q, got %q`, sourceRPC, sourceHorizon, c.source())
 	}
@@ -250,9 +271,18 @@ func (c *config) network() string {
 	return strings.TrimSpace(c.v.GetString(keyNetwork))
 }
 
-// source is the capture source: rpc or horizon.
+// source is the capture source: rpc or horizon, or file when --file-source
+// names a directory of dumps.
 func (c *config) source() string {
+	if c.fileSource() != "" {
+		return sourceFile
+	}
 	return strings.TrimSpace(c.v.GetString(keySource))
+}
+
+// fileSource is the directory of XDR dumps to read instead of the network.
+func (c *config) fileSource() string {
+	return strings.TrimSpace(c.v.GetString(keyFileSrc))
 }
 
 // endpoint is the address the capture source talks to.
@@ -266,6 +296,8 @@ func (c *config) endpoint() (string, error) {
 		return capture.ResolveHorizonEndpoint(c.network(), c.rpcURL())
 	case sourceRPC:
 		return capture.ResolveEndpoint(c.network(), c.rpcURL())
+	case sourceFile:
+		return c.fileSource(), nil
 	default:
 		return "", fmt.Errorf("unknown source %q", c.source())
 	}

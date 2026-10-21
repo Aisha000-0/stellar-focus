@@ -29,10 +29,13 @@ var Version = "dev"
 // newSource builds the capture source. It is a variable so tests can
 // substitute a fake and exercise the commands without a network.
 //
-// The kind is the source the user asked for — "rpc" or "horizon" — and the
-// endpoint is the URL that kind resolves to.
+// The kind is the source the user asked for — "rpc", "horizon" or "file" —
+// and the endpoint is the URL, or for a file source the directory, that kind
+// resolves to.
 var newSource = func(kind, network, endpoint string, timeout time.Duration) capture.Source {
 	switch kind {
+	case sourceFile:
+		return capture.NewFileSource(endpoint).ForNetwork(network)
 	case sourceHorizon:
 		return capture.NewHorizonSource(network, endpoint, timeout)
 	default:
@@ -71,6 +74,9 @@ precedence.`,
 
   # Check that stored fixtures still match the chain
   focus verify testdata/
+
+  # Check them offline, against XDR dumps instead of the network
+  focus verify testdata/ --file-source testdata/dumps/
 
   # Use mainnet for one invocation
   FOCUS_NETWORK=mainnet focus verify testdata/`,
