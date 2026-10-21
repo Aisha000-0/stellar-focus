@@ -14,21 +14,21 @@ import (
 
 // fixture reads real captured mainnet XDR, shared with the sibling
 // repositories.
-func fixture(t testing.TB, name string) string {
-	t.Helper()
+func fixture(tb testing.TB, name string) string {
+	tb.Helper()
 	b, err := os.ReadFile(filepath.Join("..", "..", "pkg", "fuzz", "testdata", name+".txt"))
 	if err != nil {
-		t.Fatalf("reading fixture %s: %v", name, err)
+		tb.Fatalf("reading fixture %s: %v", name, err)
 	}
 	return strings.TrimSpace(string(b))
 }
 
 // mustMarshal builds base64 XDR from a concrete value.
-func mustMarshal(t testing.TB, v any) string {
-	t.Helper()
+func mustMarshal(tb testing.TB, v any) string {
+	tb.Helper()
 	s, err := xdr.MarshalBase64(v)
 	if err != nil {
-		t.Fatalf("marshalling %T: %v", v, err)
+		tb.Fatalf("marshalling %T: %v", v, err)
 	}
 	return s
 }

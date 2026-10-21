@@ -125,7 +125,7 @@ func assertEntryChange(t TB, assertion string, meta, key Value, want xdr.LedgerE
 	}
 
 	t.Errorf("%s: no ledger entry was %s for %s\n\n%s",
-		assertion, changeVerb(want), wantKey.label, indent(describeChanges(changes), "  "))
+		assertion, changeVerb(want), wantKey.label, indent(describeChanges(changes)))
 	return false
 }
 

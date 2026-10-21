@@ -212,6 +212,7 @@ func (g *Golden) Require(name string, actual focus.Value) bool {
 // It is shared by Assert and Require so the two cannot drift apart: the
 // same comparison, the same messages, the same layout.
 func (g *Golden) compare(tb focus.TB, name string, actual focus.Value) bool {
+	tb.Helper()
 	path := g.Path(name)
 
 	if Update() {

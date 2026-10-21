@@ -121,7 +121,7 @@ func AssertOperationCount(t TB, envelope Value, want int) bool {
 	}
 	if len(s.Operations) != want {
 		t.Errorf("AssertOperationCount: transaction has %d operation(s), want %d\n%s",
-			len(s.Operations), want, indent(operationList(s), "  "))
+			len(s.Operations), want, indent(operationList(s)))
 		return false
 	}
 	return true
@@ -147,7 +147,7 @@ func AssertOperationTypes(t TB, envelope Value, want ...string) bool {
 
 	if len(got) != len(want) || !equalStrings(got, want) {
 		t.Errorf("AssertOperationTypes: operations are [%s], want [%s]\n%s",
-			strings.Join(got, ", "), strings.Join(want, ", "), indent(operationList(s), "  "))
+			strings.Join(got, ", "), strings.Join(want, ", "), indent(operationList(s)))
 		return false
 	}
 	return true

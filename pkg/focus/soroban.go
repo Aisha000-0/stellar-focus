@@ -82,7 +82,7 @@ func AssertEventEmitted(t TB, meta Value, want Event) bool {
 	}
 
 	t.Errorf("AssertEventEmitted: no event matched %s\n\n%s%s%s",
-		describeWantedEvent(want), indent(describeEvents(events, spec), "  "),
+		describeWantedEvent(want), indent(describeEvents(events, spec)),
 		describeEventDiffs(events, want, spec), describeSpecHint(want))
 	return false
 }
@@ -97,7 +97,7 @@ func AssertEventCount(t TB, meta Value, want int) bool {
 	}
 	if len(events) != want {
 		t.Errorf("AssertEventCount: meta has %d event(s), want %d\n\n%s",
-			len(events), want, indent(describeEvents(events, nil), "  "))
+			len(events), want, indent(describeEvents(events, nil)))
 		return false
 	}
 	return true
@@ -190,7 +190,7 @@ func assertReturnValue(t TB, assertion string, meta Value, want Value, function 
 		assertion,
 		index.describeSpecValue(returnType, soroban.ReturnValue),
 		index.describeWantedValue(returnType, want),
-		indent(strings.Join(diffs, "\n"), "  "))
+		indent(strings.Join(diffs, "\n")))
 	return false
 }
 
@@ -302,14 +302,14 @@ func contractError(t TB, assertion string, v Value) (xdr.ScError, bool, bool) {
 
 	case xdr.SorobanTransactionMeta:
 		meta := value
-		return contractErrorFromSorobanMeta(t, assertion, &meta)
+		return contractErrorFromSorobanMeta(t, &meta)
 
 	case *xdr.SorobanTransactionMeta:
 		if value == nil {
 			t.Errorf("%s: value is a nil *SorobanTransactionMeta", assertion)
 			return xdr.ScError{}, false, false
 		}
-		return contractErrorFromSorobanMeta(t, assertion, value)
+		return contractErrorFromSorobanMeta(t, value)
 
 	default:
 		return contractErrorFromMetaValue(t, assertion, v)
@@ -395,7 +395,7 @@ func contractErrorFromMeta(t TB, assertion string, m *xdr.TransactionMeta) (xdr.
 }
 
 // contractErrorFromSorobanMeta reads the error out of a Soroban section.
-func contractErrorFromSorobanMeta(t TB, assertion string, meta *xdr.SorobanTransactionMeta) (xdr.ScError, bool, bool) {
+func contractErrorFromSorobanMeta(t TB, meta *xdr.SorobanTransactionMeta) (xdr.ScError, bool, bool) {
 	t.Helper()
 
 	if e, ok := scValError(meta.ReturnValue); ok {

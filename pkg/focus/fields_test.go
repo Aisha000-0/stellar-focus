@@ -13,11 +13,11 @@ import (
 
 // operationWithSource builds a payment operation that names a source account
 // of its own.
-func operationWithSource(t testing.TB, source string) xdr.Operation {
-	t.Helper()
+func operationWithSource(tb testing.TB) xdr.Operation {
+	tb.Helper()
 
-	op := paymentOp(t, 100)
-	muxed := mustMuxed(t, source)
+	op := paymentOp(tb, 100)
+	muxed := mustMuxed(tb, testDest)
 	op.SourceAccount = &muxed
 	return op
 }
@@ -25,11 +25,11 @@ func operationWithSource(t testing.TB, source string) xdr.Operation {
 // operationWithMuxedSource builds a payment operation whose source account is
 // a muxed form of an account, which the protocol records in its own "M…"
 // form.
-func operationWithMuxedSource(t testing.TB, source string, id uint64) xdr.Operation {
-	t.Helper()
+func operationWithMuxedSource(tb testing.TB, source string, id uint64) xdr.Operation {
+	tb.Helper()
 
-	aid := mustAccountID(t, source)
-	op := paymentOp(t, 100)
+	aid := mustAccountID(tb, source)
+	op := paymentOp(tb, 100)
 	op.SourceAccount = &xdr.MuxedAccount{
 		Type: xdr.CryptoKeyTypeKeyTypeMuxedEd25519,
 		Med25519: &xdr.MuxedAccountMed25519{
@@ -62,7 +62,7 @@ func TestAssertOperationSourceAccountPass(t *testing.T) {
 		{
 			name: "operation names a source account",
 			envelope: envelopeValue(t,
-				operationWithSource(t, testDest),
+				operationWithSource(t),
 				paymentOp(t, 200)),
 			opIndex: 0,
 			want:    testDest,
@@ -71,7 +71,7 @@ func TestAssertOperationSourceAccountPass(t *testing.T) {
 			name: "operation names no source account",
 			envelope: envelopeValue(t,
 				paymentOp(t, 100),
-				operationWithSource(t, testDest)),
+				operationWithSource(t)),
 			opIndex: 1,
 			want:    testDest,
 		},
@@ -115,7 +115,7 @@ func TestAssertOperationSourceAccountPass(t *testing.T) {
 func TestAssertOperationSourceAccountFail(t *testing.T) {
 	t.Parallel()
 
-	overridden := envelopeValue(t, operationWithSource(t, testDest))
+	overridden := envelopeValue(t, operationWithSource(t))
 	inherited := envelopeValue(t, paymentOp(t, 100))
 
 	tests := []struct {
@@ -435,7 +435,7 @@ func TestAssertSignedByFail(t *testing.T) {
 func TestFieldAssertionsRequireFatalf(t *testing.T) {
 	t.Parallel()
 
-	envelope := envelopeValue(t, operationWithSource(t, testDest))
+	envelope := envelopeValue(t, operationWithSource(t))
 
 	tb := faketb.New()
 	require.OperationSourceAccount(tb, envelope, 0, testIssuer)
@@ -456,13 +456,13 @@ func TestFieldAssertionsRequireFatalf(t *testing.T) {
 // feeBumpWithMemo builds a fee-bump envelope whose inner transaction
 // carries a text memo, so a test can tell the inner transaction's memo from
 // the wrapper's.
-func feeBumpWithMemo(t testing.TB, memo string) xdr.TransactionEnvelope {
-	t.Helper()
+func feeBumpWithMemo(tb testing.TB, memo string) xdr.TransactionEnvelope {
+	tb.Helper()
 
-	inner := envelopeValue(t, paymentOp(t, 100))
+	inner := envelopeValue(tb, paymentOp(tb, 100))
 	text := memo
 	inner.V1.Tx.Memo = xdr.Memo{Type: xdr.MemoTypeMemoText, Text: &text}
-	return feeBumpEnvelopeValue(t, inner, nil, nil)
+	return feeBumpEnvelopeValue(tb, inner, nil, nil)
 }
 
 // TestFieldAssertionsReadThroughAFeeBump checks the documented behaviour of

@@ -96,7 +96,7 @@ func TestTypesCoverTheMajorOnes(t *testing.T) {
 func TestCorpusMatchesTheFixtures(t *testing.T) {
 	t.Parallel()
 
-	files, err := os.ReadDir(filepath.Join("testdata"))
+	files, err := os.ReadDir("testdata")
 	if err != nil {
 		t.Fatalf("reading the corpus directory: %v", err)
 	}
