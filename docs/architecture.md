@@ -73,6 +73,9 @@ pkg/capture/
   capture.go        Source interface, RPC impl, Verify  ← seam: new sources
   rpc.go            the Soroban RPC Source
   horizon.go        the Horizon Source
+  file_source.go    a Source over a directory of XDR dumps, for offline use
+  archive_source.go the history archive Source, and RPC-then-archive fallback
+  sanitize.go       masking of memos, data values and secret keys at capture
   cache.go          Scraper: rate-limited fetches, .focus/cache
   bundle.go         multi-transaction capture with a manifest
   codegen.go        deterministic replay-test generation from fixtures
@@ -774,6 +777,26 @@ rule holds:
   chooses between them with `--source rpc|horizon`; each source has its own
   default endpoint per network, because an RPC endpoint and a Horizon
   endpoint are different services.
+- `capture.FileSource` (`pkg/capture/file_source.go`) replays dumps from a
+  directory — `{hash}.{envelope,result,meta}.xdr` and `{key}.entry.xdr` —
+  so a fixture can be captured or verified with no network at all. The CLI
+  selects it with `--file-source <dir>`.
+- `capture.ArchivalSource` (`pkg/capture/archive_source.go`) reads a
+  history archive's checkpoint files. An archive is not indexed by hash, so
+  it implements the optional `LedgerTransactionSource` and needs the ledger
+  a transaction closed in; `FetchTransaction` passes that hint where a
+  source can use it, and `Verify` takes it from the fixture's provenance.
+  The envelope is found by hashing each candidate with the passphrase the
+  archive records. `capture.FallbackSource` asks RPC first and the archive
+  on `ErrNotFound`; the CLI builds one when `--archive-url` is given.
+- Provenance records the network passphrase: from a source that reports it
+  (`NetworkPassphraseSource`), else from `golden.KnownPassphrases`, else
+  from `capture.WithPassphrase` (`--passphrase`). `Verify` refuses a
+  fixture whose passphrase the source contradicts.
+- `capture.Sanitizer` (`pkg/capture/sanitize.go`) rewrites records before
+  they become fixtures, masking text memos, data values and secret-key
+  shaped strings. Sanitized and anonymized fixtures are marked in their
+  provenance and are not verified against the chain.
 
 ## The fuzz corpus
 
@@ -814,8 +837,9 @@ assertion and a manual investigation can never disagree.
 
 ## Adding a fixture source
 
-Implement `capture.Source` and wire it into `internal/cli`. Horizon and a
-local core instance are the obvious candidates. Return one `Record` per
+Implement `capture.Source` and wire it into `internal/cli`. RPC, Horizon,
+a dump directory and a history archive exist; a local core instance is the
+obvious next candidate. Return one `Record` per
 payload — an envelope, a result and a meta are three fixtures, not one — and
 populate `Ledger` and `TxHash` so `focus verify` can re-fetch later.
 

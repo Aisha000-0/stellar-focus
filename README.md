@@ -384,6 +384,63 @@ focus capture tx 2b2e276a8f99a292… --source horizon
 `--source` is `rpc` (the default) or `horizon`. Each has its own default
 endpoint per network, and `--rpc-url` overrides the one in use.
 
+### Capturing from a history archive
+
+RPC keeps a few weeks of history; a Stellar history archive keeps all of it.
+`--archive-url` falls back to an archive for any transaction the source no
+longer has. An archive is laid out by checkpoint rather than indexed by hash,
+so give the ledger the transaction closed in:
+
+```sh
+focus capture tx 2b2e276a8f99a292… --network mainnet --ledger 3966820 \
+  --archive-url https://history.stellar.org/prd/core-live/core_live_001
+```
+
+An archive holds envelopes and results, not meta. `focus verify` with
+`--archive-url` uses the ledger each fixture recorded, so no `--ledger` is
+needed there.
+
+### Verifying offline
+
+`--file-source <dir>` reads XDR dumps from a directory instead of the
+network, so fixtures can be checked on an air-gapped CI runner:
+
+```sh
+focus verify testdata/ --file-source testdata/dumps/
+```
+
+A transaction is read from `{hash}.envelope.xdr`, `{hash}.result.xdr` and
+`{hash}.meta.xdr`, a ledger entry from `{key}.entry.xdr` with the key in
+URL-safe base64. Each file holds base64 XDR or the raw bytes; missing parts
+are skipped.
+
+### Network passphrases
+
+A fixture records the passphrase of the network it came from, since a
+transaction's hash and signatures are bound to it. RPC reports it; for
+testnet, mainnet and futurenet it is known; for anything else, give it:
+
+```sh
+focus capture tx 2b2e276a8f99a292… --network standalone \
+  --rpc-url http://localhost:8000/rpc --passphrase "Standalone Network ; February 2017"
+```
+
+### Sanitizing a capture
+
+A capture from a staging network can carry data that must not be committed.
+`--sanitize` masks it before the fixture is written:
+
+```sh
+focus capture tx 2b2e276a8f99a292… --sanitize
+```
+
+`--mask-memo` replaces text memos with `[REDACTED_MEMO]`, `--scrub-data`
+replaces data entry values with `[REDACTED_DATA]`, and `--scrub-keys`
+replaces anything shaped like a secret key (`S` and 55 more characters) with
+`[REDACTED_SECRET_KEY]`; `--sanitize` is all three. The decoded section is
+rendered from the masked XDR, so it is clean too. A sanitized fixture no
+longer matches the chain, so `focus verify` skips it.
+
 ### Configuration
 
 Flags, `FOCUS_*` environment variables and a config file are three spellings
