@@ -53,11 +53,10 @@ has drifted, and 1 when a fixture could not be checked at all.`,
 				return failureErrorf("no fixture files found in %s", strings.Join(args, ", "))
 			}
 
-			endpoint, err := cfg.endpoint()
+			src, err := openSource(cfg)
 			if err != nil {
-				return usageErrorf("%v", err)
+				return err
 			}
-			src := newSource(cfg.source(), cfg.network(), endpoint, cfg.timeout())
 
 			var checked, matched, drifted, skipped, errored int
 			for _, path := range paths {

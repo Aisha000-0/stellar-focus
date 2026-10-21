@@ -256,6 +256,9 @@ func (yamlSerializer) Marshal(f *Fixture) ([]byte, error) {
 		writeYAMLIndent(&buf, 0)
 		buf.WriteString("captured:\n")
 		writeYAMLPair(&buf, 1, "network", p.Network)
+		if p.NetworkPassphrase != "" {
+			writeYAMLPair(&buf, 1, "networkPassphrase", p.NetworkPassphrase)
+		}
 		if p.Ledger != 0 {
 			writeYAMLPair(&buf, 1, "ledger", number(p.Ledger))
 		}
@@ -681,6 +684,9 @@ func (textSerializer) Marshal(f *Fixture) ([]byte, error) {
 
 	if p := f.Captured; p != nil {
 		add("captured.network", p.Network)
+		if p.NetworkPassphrase != "" {
+			add("captured.networkPassphrase", p.NetworkPassphrase)
+		}
 		if p.Ledger != 0 {
 			add("captured.ledger", number(p.Ledger))
 		}
@@ -1131,6 +1137,9 @@ func provenanceFromTree(v any) (*Provenance, error) {
 	p := &Provenance{}
 	var err error
 	if p.Network, err = treeString(obj, "network"); err != nil {
+		return nil, err
+	}
+	if p.NetworkPassphrase, err = treeString(obj, "networkPassphrase"); err != nil {
 		return nil, err
 	}
 	if p.TxHash, err = treeString(obj, "txHash"); err != nil {
