@@ -82,9 +82,9 @@ func XDRRoundTrip(t focus.TB, value focus.Value, typeName string) {
 }
 
 // SourceAccount is focus.AssertSourceAccount, stopping the test on failure.
-func SourceAccount(t focus.TB, envelope focus.Value, want string) {
+func SourceAccount(t focus.TB, envelope focus.Value, want string, opts ...focus.Option) {
 	t.Helper()
-	focus.AssertSourceAccount(fatal(t), envelope, want)
+	focus.AssertSourceAccount(fatal(t), envelope, want, opts...)
 }
 
 // Fee is focus.AssertFee, stopping the test on failure.
@@ -94,9 +94,9 @@ func Fee(t focus.TB, envelope focus.Value, want int64) {
 }
 
 // Sequence is focus.AssertSequence, stopping the test on failure.
-func Sequence(t focus.TB, envelope focus.Value, want int64) {
+func Sequence(t focus.TB, envelope focus.Value, want int64, opts ...focus.Option) {
 	t.Helper()
-	focus.AssertSequence(fatal(t), envelope, want)
+	focus.AssertSequence(fatal(t), envelope, want, opts...)
 }
 
 // TimeboundsValid is focus.AssertTimeboundsValid, stopping the test on
@@ -139,21 +139,21 @@ func LedgerBounds(t focus.TB, envelope focus.Value, wantMinLedger, wantMaxLedger
 }
 
 // Memo is focus.AssertMemo, stopping the test on failure.
-func Memo(t focus.TB, envelope focus.Value, want string) {
+func Memo(t focus.TB, envelope focus.Value, want string, opts ...focus.Option) {
 	t.Helper()
-	focus.AssertMemo(fatal(t), envelope, want)
+	focus.AssertMemo(fatal(t), envelope, want, opts...)
 }
 
 // MemoTextEqual is focus.AssertMemoTextEqual, stopping the test on failure.
-func MemoTextEqual(t focus.TB, envelope focus.Value, want string) {
+func MemoTextEqual(t focus.TB, envelope focus.Value, want string, opts ...focus.Option) {
 	t.Helper()
-	focus.AssertMemoTextEqual(fatal(t), envelope, want)
+	focus.AssertMemoTextEqual(fatal(t), envelope, want, opts...)
 }
 
 // MemoIDEqual is focus.AssertMemoIDEqual, stopping the test on failure.
-func MemoIDEqual(t focus.TB, envelope focus.Value, want uint64) {
+func MemoIDEqual(t focus.TB, envelope focus.Value, want uint64, opts ...focus.Option) {
 	t.Helper()
-	focus.AssertMemoIDEqual(fatal(t), envelope, want)
+	focus.AssertMemoIDEqual(fatal(t), envelope, want, opts...)
 }
 
 // MemoHashEqual is focus.AssertMemoHashEqual, stopping the test on failure.
@@ -170,15 +170,15 @@ func MemoReturnEqual(t focus.TB, envelope focus.Value, want focus.Value) {
 }
 
 // MemoText is focus.AssertMemoText, stopping the test on failure.
-func MemoText(t focus.TB, envelope focus.Value, want string) {
+func MemoText(t focus.TB, envelope focus.Value, want string, opts ...focus.Option) {
 	t.Helper()
-	focus.AssertMemoText(fatal(t), envelope, want)
+	focus.AssertMemoText(fatal(t), envelope, want, opts...)
 }
 
 // MemoID is focus.AssertMemoID, stopping the test on failure.
-func MemoID(t focus.TB, envelope focus.Value, want uint64) {
+func MemoID(t focus.TB, envelope focus.Value, want uint64, opts ...focus.Option) {
 	t.Helper()
-	focus.AssertMemoID(fatal(t), envelope, want)
+	focus.AssertMemoID(fatal(t), envelope, want, opts...)
 }
 
 // MemoHash is focus.AssertMemoHash, stopping the test on failure.
@@ -195,9 +195,9 @@ func NoMemo(t focus.TB, envelope focus.Value) {
 
 // OperationSourceAccount is focus.AssertOperationSourceAccount, stopping the
 // test on failure.
-func OperationSourceAccount(t focus.TB, envelope focus.Value, opIndex int, want string) {
+func OperationSourceAccount(t focus.TB, envelope focus.Value, opIndex int, want string, opts ...focus.Option) {
 	t.Helper()
-	focus.AssertOperationSourceAccount(fatal(t), envelope, opIndex, want)
+	focus.AssertOperationSourceAccount(fatal(t), envelope, opIndex, want, opts...)
 }
 
 // OperationCount is focus.AssertOperationCount, stopping the test on failure.
@@ -220,9 +220,9 @@ func OperationSequence(t focus.TB, envelope focus.Value, want []xdr.OperationTyp
 }
 
 // SignatureCount is focus.AssertSignatureCount, stopping the test on failure.
-func SignatureCount(t focus.TB, envelope focus.Value, want int) {
+func SignatureCount(t focus.TB, envelope focus.Value, want int, opts ...focus.Option) {
 	t.Helper()
-	focus.AssertSignatureCount(fatal(t), envelope, want)
+	focus.AssertSignatureCount(fatal(t), envelope, want, opts...)
 }
 
 // SignaturesPresent is focus.AssertSignaturesPresent, stopping the test on
