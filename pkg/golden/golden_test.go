@@ -156,6 +156,71 @@ func TestAssertFailureShowsDiffAndRemedy(t *testing.T) {
 	}
 }
 
+// TestRequireStopsTheTestOnFailure is the fatal counterpart of Assert: the
+// same diagnostic, delivered as one fatal message so a test that stops
+// still shows the reader everything.
+func TestRequireStopsTheTestOnFailure(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+
+	stored := buildEnvelope(t, 100)
+	actual := buildEnvelope(t, 200)
+
+	fixture, err := golden.Build(stored, "TransactionEnvelope", "", nil)
+	if err != nil {
+		t.Fatalf("Build() error = %v", err)
+	}
+	if err := golden.Save(filepath.Join(dir, "env.golden.json"), fixture); err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+
+	tb := faketb.New()
+	g := golden.New(tb, golden.WithDir(dir))
+	if g.Require("env", actual) {
+		t.Fatal("Require() passed against a stale golden file")
+	}
+
+	if len(tb.Fatals) == 0 {
+		t.Fatalf("the failure was not reported fatally:\n%s", tb.Output())
+	}
+	if len(tb.Errors) != 0 {
+		t.Errorf("the failure was also reported through Errorf:\n%s", tb.Output())
+	}
+
+	out := tb.Output()
+	for _, want := range []string{"Body.PaymentOp.Amount", "is out of date", "-focus.update"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("the fatal message does not contain %q:\n%s", want, out)
+		}
+	}
+}
+
+// TestRequirePassesAgainstAMatchingGolden checks the ordinary case: a
+// fixture that matches says nothing at all.
+func TestRequirePassesAgainstAMatchingGolden(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	env := buildEnvelope(t, 100)
+
+	fixture, err := golden.Build(env, "TransactionEnvelope", "", nil)
+	if err != nil {
+		t.Fatalf("Build() error = %v", err)
+	}
+	if err := golden.Save(filepath.Join(dir, "env.golden.json"), fixture); err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+
+	tb := faketb.New()
+	if !golden.New(tb, golden.WithDir(dir)).Require("env", env) {
+		t.Errorf("Require() failed against a matching golden file:\n%s", tb.Output())
+	}
+	if tb.Failed() {
+		t.Errorf("a matching fixture reported a failure:\n%s", tb.Output())
+	}
+}
+
 // TestAssertMissingFileExplainsHowToCreateIt covers the first run of a new
 // golden test, where a bare "no such file" would be unhelpful.
 func TestAssertMissingFileExplainsHowToCreateIt(t *testing.T) {
