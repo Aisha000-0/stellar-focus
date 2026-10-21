@@ -36,6 +36,7 @@ func TestLibraryStaysDependencyLight(t *testing.T) {
 		"github.com/stellar-optics/stellar-focus/pkg/focus/require",
 		"github.com/stellar-optics/stellar-focus/pkg/fuzz",
 		"github.com/stellar-optics/stellar-focus/pkg/golden",
+		"github.com/stellar-optics/stellar-focus/pkg/golden/require",
 	}
 
 	for _, pkg := range packages {

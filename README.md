@@ -315,6 +315,33 @@ A golden test nobody can review is a golden test nobody updates carefully.
 The flag is namespaced `-focus.update` so it never collides with your own
 `-update`.
 
+### Fatal golden assertions
+
+`Assert` reports a failure and lets the test continue, which is what you
+want in a table test that should report every problem in one run. When
+everything after the comparison would be meaningless without it, use
+`Require` instead:
+
+```go
+g := golden.New(t, golden.WithType("TransactionEnvelope"))
+g.Require("payment", BuildPayment(dest, "100"))
+```
+
+It reports the same diagnostic — the same diff, in the same layout, with the
+same `-focus.update` instructions — and then stops the test. The package
+form does the same in one call:
+
+```go
+import "github.com/stellar-optics/stellar-focus/pkg/golden/require"
+
+require.Assert(t, "payment", BuildPayment(dest, "100"))
+```
+
+```go
+g := require.New(t, golden.WithType("TransactionEnvelope"))
+g.Assert("payment", BuildPayment(dest, "100"))
+```
+
 ## Capture
 
 ```sh

@@ -78,6 +78,10 @@ Working and tested:
 - `require` mirrors with `Fatalf` semantics, with 100% parity enforced by an
   AST audit (`pkg/focus/require/audit.go`)
 - Golden files in reviewable JSON, with `-focus.update`
+- Fatal golden assertions: `golden.Golden.Require` and the
+  `pkg/golden/require` package stop the test at the first mismatch, with the
+  same diagnostic `Assert` reports — the diff and the command that
+  re-records the fixture
 - Golden comparisons that normalize volatile sequence and time fields by
   default, with an opt-out, plus a benchmark of the structural comparison path
 - Fixtures in JSON, YAML or plain text — chosen by file extension, or with
