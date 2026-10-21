@@ -310,7 +310,8 @@ import "github.com/stellar-optics/stellar-focus/pkg/focus/require"
 require.EnvelopeEqual(t, want, got)   // stops the test; same message
 ```
 
-Same split, same naming as testify's `assert` and `require`.
+Same split, same naming as testify's `assert` and `require`. The golden files
+have their own mirror, [`pkg/golden/require`](#fatal-golden-assertions).
 
 ### Assertions never panic
 
