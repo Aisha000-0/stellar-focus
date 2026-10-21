@@ -55,38 +55,12 @@ const (
 
 // DiagnosticEvent is one event in a transaction's diagnostic stream, with the
 // position and depth it was emitted at.
-type DiagnosticEvent struct {
-	// Index is the event's zero-based position in the stream.
-	//
-	// A diagnostic event carries no wall-clock timestamp, so its position is
-	// the only ordering key the protocol gives it; see DiagnosticTimeline for
-	// what dates the stream as a whole.
-	Index int
-	// Depth is the contract call depth the event was emitted at: 0 for the
-	// transaction's outermost call, 1 for a call made from inside it, and so
-	// on. A fn_call and its matching fn_return share a depth.
-	Depth int
-	// Kind is one of the Diagnostic* constants, or the first topic symbol of a
-	// diagnostic event this package does not name.
-	Kind string
-	// ContractID is the strkey "C…" address of the contract the event belongs
-	// to. It is empty for a system event, which no contract emits.
-	ContractID string
-	// Topics and Data are the event's payload in wire form. Use Event's
-	// matching instead of reading these unless you need the raw values.
-	Topics []xdr.ScVal
-	Data   xdr.ScVal
-	// InSuccessfulContractCall reports whether the call that emitted the event
-	// completed. Events from a failed call survive only here.
-	InSuccessfulContractCall bool
-
-	// event is the raw event, kept for matching against a matcher.
-	event xdr.ContractEvent
-	// detail is the pre-rendered one-line description. It is built behind
-	// guard, while the value is known to be well-formed, so that printing a
-	// failure never calls a generated accessor on a value that could panic.
-	detail string
-}
+//
+// It is the same shape as Event, so an event read out of a stream can be fed
+// straight back into the event matchers. ContractID, Topics and Data carry the
+// payload; Index, Depth, Kind and InSuccessfulContractCall carry the stream
+// position that a diagnostic event has instead of a timestamp.
+type DiagnosticEvent = Event
 
 // DiagnosticEventMatch describes one diagnostic event a test expects to find,
 // and the order in which it expects to find it.
@@ -338,7 +312,12 @@ func decorateDiagnostics(raw []xdr.DiagnosticEvent) []DiagnosticEvent {
 
 		body, hasBody := de.Event.Body.GetV0()
 		if hasBody {
-			ev.Topics = body.Topics
+			if len(body.Topics) > 0 {
+				ev.Topics = make([]any, len(body.Topics))
+				for i, topic := range body.Topics {
+					ev.Topics[i] = topic
+				}
+			}
 			ev.Data = body.Data
 		}
 		ev.detail = describeDiagnosticEvent(ev, hasBody)
@@ -448,15 +427,15 @@ func describeDiagnosticEvent(e DiagnosticEvent, hasBody bool) string {
 	if e.ContractID != "" {
 		fmt.Fprintf(&b, "  contract %s", shorten(e.ContractID))
 	}
-	if hasBody {
-		if len(e.Topics) > 0 {
-			topics := make([]string, 0, len(e.Topics))
-			for _, topic := range e.Topics {
+	if body, ok := e.event.Body.GetV0(); hasBody && ok {
+		if len(body.Topics) > 0 {
+			topics := make([]string, 0, len(body.Topics))
+			for _, topic := range body.Topics {
 				topics = append(topics, describeScVal(topic))
 			}
 			fmt.Fprintf(&b, "  topics[%s]", strings.Join(topics, ", "))
 		}
-		fmt.Fprintf(&b, "  data %s", describeScVal(e.Data))
+		fmt.Fprintf(&b, "  data %s", describeScVal(body.Data))
 	} else {
 		b.WriteString("  (the event body carries no V0 arm, so it has no topics or data)")
 	}

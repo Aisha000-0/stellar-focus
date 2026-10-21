@@ -234,8 +234,8 @@ func TestDiagnosticEvents(t *testing.T) {
 	if events[6].ContractID != "" {
 		t.Errorf("the system event belongs to %q, want no contract", events[6].ContractID)
 	}
-	if events[1].Data.Type != xdr.ScValTypeScvU32 {
-		t.Errorf("event 1 carries a %s payload, want u32", events[1].Data.Type)
+	if data, ok := events[1].Data.(xdr.ScVal); !ok || data.Type != xdr.ScValTypeScvU32 {
+		t.Errorf("event 1 carries a %v payload, want u32", events[1].Data)
 	}
 }
 

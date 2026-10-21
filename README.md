@@ -80,6 +80,39 @@ func TestBuildPayment(t *testing.T) {
 Every assertion accepts XDR in whatever form your code produced it — a base64
 string, raw `[]byte`, any `xdr.*` value, or an already-decoded `*lens.Value`.
 
+### Round-trip checks
+
+A value can decode cleanly and still not survive being re-encoded: a dropped
+union arm, a mutated field or a reordered array all pass a decoder and fail a
+serializer. `AssertXDRRoundTrip` re-encodes the decoded value, decodes it
+again, and diffs the two trees:
+
+```go
+focus.AssertXDRRoundTrip(t, envelope, "TransactionEnvelope")
+```
+
+The failure names the field path that changed, the same way the equality
+assertions do, so a lossy encoder is a readable diff rather than two base64
+strings to compare by eye.
+
+### Ledger keys
+
+`pkg/ledgerkey` builds the base64-encoded `LedgerKey` that `focus capture
+ledger-entry` and `capture.Source` expect, without assembling nested union
+arms by hand:
+
+```go
+key, err := ledgerkey.Account(address)
+key, err = ledgerkey.Trustline(address, asset)
+key, err = ledgerkey.ContractData(contractID, "counter", xdr.ContractDataDurabilityPersistent)
+key, err = ledgerkey.ContractCode(hash)
+
+focus.AssertLedgerKeyEqual(t, key, want)
+```
+
+`AssertLedgerKeyEqual` accepts a key built by the package and one read out of
+a transaction meta or captured fixture, and names the field that differs.
+
 ### Preconditions
 
 A transaction can promise the network a window in which it is valid. The
@@ -135,6 +168,9 @@ focus.AssertEventEmitted(t, meta, focus.Event{
 	ContractID: "CBGSB…",
 	Topics:     []any{"transfer", nil},   // nil matches any topic
 })
+focus.AssertDiagnosticEventEmitted(t, meta, focus.Event{
+	Topics: []any{focus.DiagnosticFnCall, nil, "transfer"},
+})
 focus.AssertReturnValue(t, meta, xdr.ScVal{Type: xdr.ScValTypeScvU32, U32: &seven})
 focus.AssertContractTrapped(t, result)
 
@@ -146,6 +182,11 @@ focus.AssertContractError(t, meta, xdr.ScErrorTypeSceContract, 101)
 ```
 
 A non-match lists the events that *were* emitted, so you are not left guessing.
+The same matcher works against the diagnostic stream, where the events of a
+failed call survive: `AssertDiagnosticEventEmitted` finds the `fn_call`,
+`fn_return`, `log` and error events the host recorded, and
+`focus.DiagnosticEvents` returns the whole decorated stream — position, depth
+and call outcome included — for checks this package does not provide.
 `AssertContractTrappedWith` takes a Soroban RPC `getTransaction` response, or a
 `focus.TrapEvidence{Result, Meta}` pair when the result and meta are separate
 fixtures, and searches the rendered host diagnostics.
@@ -291,11 +332,25 @@ is really the same envelope.
 ```go
 focus.AssertEnvelopeEqualUnordered(t, want, got)   // signatures compared as a set
 focus.AssertEnvelopeEqual(t, want, got, focus.SortPath("**.Signatures"))
+focus.AssertEqualAs(t, "AccountEntry", want, got, focus.SortSigners())
+focus.AssertEqualAs(t, "SorobanTransactionData", want, got, focus.SortFootprint())
+```
+
+`SortSigners` and `SortFootprint` are the two common wrappers. When an array
+has a natural identity, `SortPath` takes a key function that receives the
+decoded element as a `*lens.Node`:
+
+```go
+focus.SortPath("**.Signers", func(elem any) string {
+	n, _ := elem.(*lens.Node)
+	return n.Child("Key").String()
+})
 ```
 
 The arrays at the matching paths are sorted before the diff, so `[sigA, sigB]`
 and `[sigB, sigA]` compare equal. Everything else is still compared the usual
-way: a missing signature is still a difference.
+way: a missing signature is still a difference. A key function that panics
+falls back to canonical ordering rather than taking the test binary down.
 
 The same two deliberate behaviours apply. The paths that were compared as
 unordered sets are named in the failure output, and a sort pattern that

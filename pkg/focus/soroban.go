@@ -61,6 +61,26 @@ type Event struct {
 	//
 	// focus.ContractSpec extracts one from a compiled contract.
 	Spec []xdr.ScSpecEntry
+
+	// The fields below are populated when the Event comes from
+	// DiagnosticEvents, where a stream position and call depth matter. They
+	// are ignored by the event matchers.
+	//
+	// Index is the event's zero-based position in the diagnostic stream.
+	Index int
+	// Depth is the contract call depth the event was emitted at.
+	Depth int
+	// Kind classifies a diagnostic event: one of the Diagnostic* constants,
+	// or the event's first topic symbol.
+	Kind string
+	// InSuccessfulContractCall reports whether the call that emitted the
+	// event completed. Events from a failed call survive only in diagnostics.
+	InSuccessfulContractCall bool
+
+	// event is the raw diagnostic event, kept for matching.
+	event xdr.ContractEvent
+	// detail is the pre-rendered diagnostic description.
+	detail string
 }
 
 // AssertEventEmitted checks that a transaction meta contains a matching
@@ -85,6 +105,55 @@ func AssertEventEmitted(t TB, meta Value, want Event) bool {
 		describeWantedEvent(want), indent(describeEvents(events, spec)),
 		describeEventDiffs(events, want, spec), describeSpecHint(want))
 	return false
+}
+
+// AssertDiagnosticEventEmitted checks that a transaction meta contains a
+// matching diagnostic event.
+//
+// Diagnostic events are the host's account of a contract call: the frames it
+// opened, what the contract logged, and the error it trapped with. Unlike
+// contract events, they are recorded even when the call fails, so this is the
+// assertion for a trapped contract or an authorization failure.
+//
+// want accepts the same matcher as AssertEventEmitted. The stream position,
+// depth and call outcome that DiagnosticEvents exposes are not part of the
+// matcher; use AssertDiagnosticEventOrder when order or outcome matters.
+func AssertDiagnosticEventEmitted(t TB, meta Value, want Event) bool {
+	t.Helper()
+	const assertion = "AssertDiagnosticEventEmitted"
+
+	events, ok := diagnosticContractEvents(t, assertion, meta)
+	if !ok {
+		return false
+	}
+
+	spec := newSpecIndex(want.Spec)
+	for _, e := range events {
+		if eventMatches(e, want, spec) {
+			return true
+		}
+	}
+
+	t.Errorf("%s: no diagnostic event matched %s\n\n%s%s%s",
+		assertion, describeWantedEvent(want), indent(describeEvents(events, spec)),
+		describeEventDiffs(events, want, spec), describeSpecHint(want))
+	return false
+}
+
+// diagnosticContractEvents returns the raw contract-event form of every
+// diagnostic event a meta carries, in stream order.
+func diagnosticContractEvents(t TB, assertion string, meta Value) ([]xdr.ContractEvent, bool) {
+	t.Helper()
+
+	events, _, ok := diagnosticStream(t, assertion, meta)
+	if !ok {
+		return nil, false
+	}
+	out := make([]xdr.ContractEvent, 0, len(events))
+	for _, e := range events {
+		out = append(out, e.event)
+	}
+	return out, true
 }
 
 // AssertEventCount checks how many contract events a meta carries.
@@ -378,7 +447,11 @@ func contractErrorFromMeta(t TB, assertion string, m *xdr.TransactionMeta) (xdr.
 			if e.Kind != DiagnosticError {
 				continue
 			}
-			scErr, isError := scValError(e.Data)
+			data, hasData := eventData(e)
+			if !hasData {
+				continue
+			}
+			scErr, isError := scValError(data)
 			if !isError {
 				continue
 			}
@@ -434,7 +507,11 @@ func contractErrorFromResponse(t TB, assertion string, resp *rpcproto.GetTransac
 		if e.Kind != DiagnosticError {
 			continue
 		}
-		scErr, isError := scValError(e.Data)
+		data, hasData := eventData(e)
+		if !hasData {
+			continue
+		}
+		scErr, isError := scValError(data)
 		if !isError {
 			continue
 		}
@@ -463,6 +540,25 @@ func metaReturnValue(m *xdr.TransactionMeta) (xdr.ScVal, bool) {
 			return xdr.ScVal{}, false
 		}
 		return *v4.SorobanMeta.ReturnValue, true
+	default:
+		return xdr.ScVal{}, false
+	}
+}
+
+// eventData returns an event's payload as an ScVal.
+//
+// Event.Data accepts any form a matcher understands, but the diagnostic
+// helpers store the raw xdr.ScVal of a body arm there. Reporting no payload
+// for anything else keeps a hand-built event from being mistaken for an error.
+func eventData(e Event) (xdr.ScVal, bool) {
+	switch v := e.Data.(type) {
+	case xdr.ScVal:
+		return v, true
+	case *xdr.ScVal:
+		if v == nil {
+			return xdr.ScVal{}, false
+		}
+		return *v, true
 	default:
 		return xdr.ScVal{}, false
 	}

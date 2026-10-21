@@ -1,6 +1,10 @@
 package focus
 
 import (
+	"encoding"
+	"fmt"
+	"strings"
+
 	"github.com/stellar-optics/stellar-xdr-lens/pkg/lens"
 )
 
@@ -57,6 +61,89 @@ func AssertResultEqual(t TB, want, got Value, opts ...Option) bool {
 func AssertMetaEqual(t TB, want, got Value, opts ...Option) bool {
 	t.Helper()
 	return assertEqual(t, "AssertMetaEqual", "TransactionMeta", want, got, opts...)
+}
+
+// AssertXDRRoundTrip checks that value survives a lossless encode/decode
+// round-trip.
+//
+// It decodes value, re-encodes the decoded XDR with MarshalBinary, decodes the
+// bytes again, and compares the two decoded trees structurally. That is the
+// property a transaction builder, signer or serialization pipeline needs: the
+// payload is not merely accepted by the decoder, it comes back unchanged,
+// without a dropped union arm, a mutated field or a reordered array.
+//
+//	typeName names the XDR type, as listed by `lens types`. Naming it is
+//	preferred because detection is ambiguous for short payloads, and because
+//	the round-tripped bytes are decoded as the same type the original was.
+//
+// On failure the field path that did not survive the round-trip is printed, so
+// the difference is the same structural diff the other equality assertions
+// produce rather than two base64 strings to compare by eye.
+func AssertXDRRoundTrip(t TB, value Value, typeName string) bool {
+	t.Helper()
+	const assertion = "AssertXDRRoundTrip"
+
+	original, ok := resolve(t, assertion, "value", value, typeName)
+	if !ok {
+		return false
+	}
+
+	var (
+		roundTripped *lens.Value
+		err          error
+	)
+	if !guard(t, assertion, func() {
+		m, ok := original.Raw.(encoding.BinaryMarshaler)
+		if !ok {
+			err = fmt.Errorf("a %s value cannot be re-encoded to XDR", original.Type)
+			return
+		}
+		raw, marshalErr := m.MarshalBinary()
+		if marshalErr != nil {
+			err = fmt.Errorf("re-encoding %s: %w", original.Type, marshalErr)
+			return
+		}
+		roundTripped, err = coerce(raw, original.Type)
+	}) {
+		return false
+	}
+	if err != nil {
+		t.Errorf("%s: %v", assertion, err)
+		return false
+	}
+
+	var (
+		diff    *lens.DiffResult
+		diffErr error
+	)
+	if !guard(t, assertion, func() {
+		diff, diffErr = lens.Diff(original, roundTripped)
+	}) {
+		return false
+	}
+	if diffErr != nil {
+		t.Errorf("%s: comparing the round-tripped value: %v", assertion, diffErr)
+		return false
+	}
+	if len(diff.Changes) == 0 {
+		return true
+	}
+
+	t.Errorf("%s", roundTripMessage(original, roundTripped, diff.Changes, newConfig()))
+	return false
+}
+
+// roundTripMessage renders a round-trip failure with the same field-by-field
+// diff as the equality assertions, headed by what actually failed.
+func roundTripMessage(original, roundTripped *lens.Value, changes []lens.Change, c *config) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "AssertXDRRoundTrip: %s did not survive a MarshalBinary/UnmarshalBinary "+
+		"round-trip — %s\n\n", humanType(original.Type), pluralChanges(len(changes)))
+	b.WriteString(renderChanges(changes, c))
+	b.WriteString("\n")
+	fmt.Fprintf(&b, "original   %s\n", describePayload(original))
+	fmt.Fprintf(&b, "round-trip %s\n", describePayload(roundTripped))
+	return b.String()
 }
 
 // assertEqual is the shared implementation behind every equality assertion.

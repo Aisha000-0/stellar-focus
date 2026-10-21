@@ -331,6 +331,156 @@ func TestAssertContractErrorFailureMessages(t *testing.T) {
 	}
 }
 
+// TestAssertDiagnosticEventEmittedPasses covers the events that only exist in
+// the diagnostic stream: a frame the host opened, a line the contract logged,
+// and a contract event carried by a call that failed.
+func TestAssertDiagnosticEventEmittedPasses(t *testing.T) {
+	t.Parallel()
+
+	contractID := testContractAddress
+
+	tests := []struct {
+		name string
+		meta string
+		want focus.Event
+	}{
+		{
+			name: "fn call frame",
+			meta: diagnosticMeta(t, pinChanges(t, testDiagnosticLedger),
+				fnCall("transfer", true)),
+			want: focus.Event{
+				ContractID: contractID,
+				Topics:     []any{focus.DiagnosticFnCall, nil, "transfer"},
+			},
+		},
+		{
+			name: "logged line",
+			meta: diagnosticMeta(t, pinChanges(t, testDiagnosticLedger),
+				logEvent("minted 10", true)),
+			want: focus.Event{
+				ContractID: contractID,
+				Topics:     []any{"log"},
+				Data:       diagString("minted 10"),
+			},
+		},
+		{
+			name: "contract event from a failed call",
+			meta: diagnosticMeta(t, pinChanges(t, testDiagnosticLedger),
+				contractEventInDiag(false)),
+			want: focus.Event{
+				ContractID: contractID,
+				Topics:     []any{"transfer"},
+				Data:       diagU32(7),
+			},
+		},
+		{
+			name: "version 4 diagnostic stream",
+			meta: diagnosticMetaV4(t, pinChanges(t, testDiagnosticLedger),
+				fnCall("transfer", true)),
+			want: focus.Event{
+				Topics: []any{focus.DiagnosticFnCall, nil, "transfer"},
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			tb := faketb.New()
+			if !focus.AssertDiagnosticEventEmitted(tb, tc.meta, tc.want) {
+				t.Errorf("diagnostic event was not matched:\n%s", tb.Output())
+			}
+			if tb.Failed() {
+				t.Errorf("assertion reported a failure while returning true:\n%s", tb.Output())
+			}
+		})
+	}
+}
+
+// TestAssertDiagnosticEventEmittedFailureMessage checks that a miss names the
+// wanted event and lists the diagnostics that were there instead.
+func TestAssertDiagnosticEventEmittedFailureMessage(t *testing.T) {
+	t.Parallel()
+
+	meta := diagnosticMeta(t, pinChanges(t, testDiagnosticLedger),
+		fnCall("transfer", false),
+		logEvent("transferring 10", false),
+	)
+
+	tb := faketb.New()
+	if focus.AssertDiagnosticEventEmitted(tb, meta, focus.Event{
+		Topics: []any{"fn_call", nil, "withdraw"},
+	}) {
+		t.Fatal("assertion matched an event that was not emitted")
+	}
+
+	msg, err := tb.Message()
+	if err != nil {
+		t.Fatalf("reading the failure message: %v", err)
+	}
+	for _, want := range []string{
+		"AssertDiagnosticEventEmitted",
+		"no diagnostic event matched",
+		"events present (2)",
+		"fn_call",
+		"transferring 10",
+	} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("failure message does not contain %q:\n%s", want, msg)
+		}
+	}
+}
+
+// TestDiagnosticEventsReturnsMatcherEvents pins the escape hatch's shape: the
+// events can be read back as focus.Event values and carry the stream position
+// as well as the payload.
+func TestDiagnosticEventsReturnsMatcherEvents(t *testing.T) {
+	t.Parallel()
+
+	meta := diagnosticMeta(t, pinChanges(t, testDiagnosticLedger),
+		fnCall("transfer", true),
+		contractEventInDiag(false),
+	)
+
+	tb := faketb.New()
+	events := focus.DiagnosticEvents(tb, meta)
+	if len(events) != 2 {
+		t.Fatalf("DiagnosticEvents returned %d events, want 2:\n%s", len(events), tb.Output())
+	}
+
+	first := events[0]
+	if first.Kind != focus.DiagnosticFnCall || first.Depth != 0 || first.Index != 0 {
+		t.Errorf("first event = kind %q depth %d index %d, want fn_call at depth 0 index 0",
+			first.Kind, first.Depth, first.Index)
+	}
+	if first.ContractID != testContractAddress {
+		t.Errorf("first event contract = %q, want %q", first.ContractID, testContractAddress)
+	}
+
+	second := events[1]
+	if second.InSuccessfulContractCall {
+		t.Error("an event from a failed call is marked successful")
+	}
+	if data, ok := second.Data.(xdr.ScVal); !ok || data.Type != xdr.ScValTypeScvU32 {
+		t.Errorf("second event payload = %v, want u32(7)", second.Data)
+	}
+}
+
+// TestDiagnosticEventEmittedRequiresFatalf covers the require mirror.
+func TestDiagnosticEventEmittedRequiresFatalf(t *testing.T) {
+	t.Parallel()
+
+	meta := diagnosticMeta(t, pinChanges(t, testDiagnosticLedger), fnCall("transfer", true))
+
+	tb := faketb.New()
+	require.DiagnosticEventEmitted(tb, meta, focus.Event{Topics: []any{"withdraw"}})
+	if len(tb.Fatals) != 1 || len(tb.Errors) != 0 {
+		t.Fatalf("require reported through Errorf; want one Fatalf (errors=%d fatals=%d)",
+			len(tb.Errors), len(tb.Fatals))
+	}
+}
+
 // TestContractErrorRequiresFatalf is the documented difference between the
 // two packages: require stops the test, and its message is unchanged.
 func TestContractErrorRequiresFatalf(t *testing.T) {

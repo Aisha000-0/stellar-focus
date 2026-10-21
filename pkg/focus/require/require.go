@@ -75,6 +75,12 @@ func EqualAs(t focus.TB, typeName string, want, got focus.Value, opts ...focus.O
 	focus.AssertEqualAs(fatal(t), typeName, want, got, opts...)
 }
 
+// XDRRoundTrip is focus.AssertXDRRoundTrip, stopping the test on failure.
+func XDRRoundTrip(t focus.TB, value focus.Value, typeName string) {
+	t.Helper()
+	focus.AssertXDRRoundTrip(fatal(t), value, typeName)
+}
+
 // SourceAccount is focus.AssertSourceAccount, stopping the test on failure.
 func SourceAccount(t focus.TB, envelope focus.Value, want string) {
 	t.Helper()
@@ -309,6 +315,13 @@ func EventEmitted(t focus.TB, meta focus.Value, want focus.Event) {
 	focus.AssertEventEmitted(fatal(t), meta, want)
 }
 
+// DiagnosticEventEmitted is focus.AssertDiagnosticEventEmitted, stopping the
+// test on failure.
+func DiagnosticEventEmitted(t focus.TB, meta focus.Value, want focus.Event) {
+	t.Helper()
+	focus.AssertDiagnosticEventEmitted(fatal(t), meta, want)
+}
+
 // EventCount is focus.AssertEventCount, stopping the test on failure.
 func EventCount(t focus.TB, meta focus.Value, want int) {
 	t.Helper()
@@ -372,6 +385,12 @@ func DiagnosticEventOrder(t focus.TB, meta focus.Value, want []focus.DiagnosticE
 func DiagnosticEventTimeline(t focus.TB, meta focus.Value, want focus.DiagnosticTimeline) {
 	t.Helper()
 	focus.AssertDiagnosticEventTimeline(fatal(t), meta, want)
+}
+
+// LedgerKeyEqual is focus.AssertLedgerKeyEqual, stopping the test on failure.
+func LedgerKeyEqual(t focus.TB, want, got focus.Value) {
+	t.Helper()
+	focus.AssertLedgerKeyEqual(fatal(t), want, got)
 }
 
 // EntryCreated is focus.AssertEntryCreated, stopping the test on failure.
