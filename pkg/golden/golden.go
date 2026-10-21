@@ -84,6 +84,7 @@ type Provenance struct {
 	At                string `json:"at"`
 	Endpoint          string `json:"endpoint,omitempty"`
 	Anonymized        bool   `json:"anonymized,omitempty"`
+	Sanitized         bool   `json:"sanitized,omitempty"`
 }
 
 // Golden compares values against golden files on disk.

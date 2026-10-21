@@ -62,6 +62,9 @@ type Record struct {
 	Description string
 	// Anonymized marks XDR whose public account addresses were replaced.
 	Anonymized bool
+	// Sanitized marks XDR whose memos, data values or secret keys were
+	// masked by a Sanitizer.
+	Sanitized bool
 }
 
 // Source fetches data from a network.
@@ -166,6 +169,7 @@ func Capture(ctx context.Context, src Source, records []Record, now time.Time) (
 		provenance := golden.NewProvenance(src.Network(), src.Endpoint(), r.Ledger, r.TxHash, now)
 		provenance.NetworkPassphrase = passphrase
 		provenance.Anonymized = r.Anonymized
+		provenance.Sanitized = r.Sanitized
 
 		fixture, err := golden.Build(r.XDR, r.Type, r.Description, provenance)
 		if err != nil {
@@ -200,6 +204,11 @@ func Verify(ctx context.Context, src Source, path string, f *golden.Fixture) Ver
 	result := VerifyResult{Path: path}
 	if f.Captured != nil && f.Captured.Anonymized {
 		result.Err = fmt.Errorf("fixture addresses were anonymized, so it cannot be verified against the live network")
+		return result
+	}
+
+	if f.Captured != nil && f.Captured.Sanitized {
+		result.Err = fmt.Errorf("fixture data was sanitized, so it cannot be verified against the live network")
 		return result
 	}
 

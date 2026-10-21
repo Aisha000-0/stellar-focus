@@ -31,8 +31,9 @@ func newVerifyCmd(cfg *config, stdout, stderr io.Writer) *cobra.Command {
 		Short: "Check that stored fixtures still match the chain",
 		Long: `Re-fetch each fixture from the network and report any that no longer match.
 
-Only fixtures carrying capture provenance can be checked; hand-written ones
-are skipped and reported as such rather than silently passing.
+Only fixtures carrying capture provenance can be checked; hand-written ones,
+and ones captured with --sanitize, are skipped and reported as such rather
+than silently passing.
 
 Paths may be files or directories. With no path, testdata is checked.
 
@@ -73,7 +74,7 @@ has drifted, and 1 when a fixture could not be checked at all.`,
 				case res.Err != nil && errors.Is(res.Err, capture.ErrNotFound):
 					fmt.Fprintf(stderr, "%-40s GONE    %v\n", path, res.Err)
 					drifted++
-				case res.Err != nil && (f.Captured == nil || f.Captured.TxHash == ""):
+				case res.Err != nil && (f.Captured == nil || f.Captured.TxHash == "" || f.Captured.Sanitized):
 					fmt.Fprintf(stdout, "%-40s SKIP    %v\n", path, res.Err)
 					skipped++
 				case res.Err != nil:
