@@ -343,6 +343,54 @@ check it was never eligible for.
 
 Defaults to **testnet**; use `--network mainnet` or `--rpc-url`.
 
+### Verifying in a pipeline
+
+The report above is written for a person. A pipeline wants a document it can
+read, so `--format json` prints one:
+
+```sh
+focus verify testdata/ --format json
+```
+
+```json
+{
+  "total": 3,
+  "matched": 1,
+  "drifted": 1,
+  "skipped": 1,
+  "errored": 0,
+  "results": [
+    {
+      "path": "testdata/envelope.golden.json",
+      "status": "matched",
+      "type": "TransactionEnvelope"
+    },
+    {
+      "path": "testdata/result.golden.json",
+      "status": "drifted",
+      "type": "TransactionResult",
+      "diff_count": 2,
+      "diff_paths": ["V1.Tx.Operations[0].Body.PaymentOp.Amount"]
+    },
+    {
+      "path": "testdata/handwritten.golden.json",
+      "status": "skipped",
+      "type": "TransactionEnvelope",
+      "error": "no capture provenance, so there is nothing to re-fetch"
+    }
+  ]
+}
+```
+
+Nothing else is printed: the progress lines and the rendered diff are for the
+terminal, and the document carries the same information in a form a script can
+use — the counts, the status of each fixture, and the paths that changed.
+
+The exit status is the same in either format — `2` on drift, `1` when a
+fixture could not be checked, `0` otherwise — so a pipeline can branch on the
+exit code and read the document for the detail, or branch on the document
+alone.
+
 ### Linting fixtures
 
 A fixture that was hand-edited, or merged badly, can be subtly corrupt:

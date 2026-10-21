@@ -88,6 +88,10 @@ Working and tested:
   export to Go fuzz seed corpora
 - `focus capture` and `focus verify` against a live network, from a Soroban
   RPC endpoint or from Horizon, chosen with `--source`
+- A machine-readable `focus verify`: `--format json` prints one JSON document
+  with the counts, the status of every fixture and the paths that changed, so
+  a pipeline can post a pull-request comment or a step summary without
+  parsing terminal text. The exit status is the same in either format
 - An embedded fuzz corpus of the repository's captured mainnet XDR, for
   downstream projects that want to fuzz their own decoders (`pkg/fuzz`)
 - Unified CLI configuration: flags, `FOCUS_*` environment variables and a
