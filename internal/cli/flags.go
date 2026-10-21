@@ -52,6 +52,10 @@ const (
 	keyPrefix  = "prefix"
 	keyForce   = "force"
 	keyMask    = "mask-addresses"
+	keySanit   = "sanitize"
+	keyMemo    = "mask-memo"
+	keyData    = "scrub-data"
+	keyKeys    = "scrub-keys"
 )
 
 // The capture sources the command can talk to.
@@ -152,11 +156,23 @@ func (c *config) bindCaptureFlags(cmd *cobra.Command) {
 		"overwrite fixture files that already exist")
 	flags.Bool(keyMask, defaultMask,
 		"replace public account addresses with deterministic mock accounts")
+	flags.Bool(keySanit, false,
+		"mask sensitive data: the same as --mask-memo --scrub-data --scrub-keys")
+	flags.Bool(keyMemo, false,
+		"replace text memos with "+capture.RedactedMemo)
+	flags.Bool(keyData, false,
+		"replace data entry values with "+capture.RedactedData)
+	flags.Bool(keyKeys, false,
+		"replace anything shaped like a secret key (S...) with "+capture.RedactedSecretKey)
 
 	c.bind(flags, keyOut)
 	c.bind(flags, keyPrefix)
 	c.bind(flags, keyForce)
 	c.bind(flags, keyMask)
+	c.bind(flags, keySanit)
+	c.bind(flags, keyMemo)
+	c.bind(flags, keyData)
+	c.bind(flags, keyKeys)
 }
 
 // bind attaches a declared flag to Viper. A missing flag is a programming
@@ -309,4 +325,15 @@ func (c *config) force() bool {
 // deterministic mock accounts.
 func (c *config) maskAddresses() bool {
 	return c.v.GetBool(keyMask)
+}
+
+// sanitizer is the masking capture applies before writing fixtures.
+// --sanitize turns every mask on; the individual flags pick some of them.
+func (c *config) sanitizer() capture.Sanitizer {
+	all := c.v.GetBool(keySanit)
+	return capture.Sanitizer{
+		MaskMemo:  all || c.v.GetBool(keyMemo),
+		ScrubData: all || c.v.GetBool(keyData),
+		ScrubKeys: all || c.v.GetBool(keyKeys),
+	}
 }

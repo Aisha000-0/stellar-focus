@@ -152,9 +152,15 @@ func newCaptureCmd(cfg *config, stdout, stderr io.Writer) *cobra.Command {
 		Short: "Record a transaction's envelope, result and meta",
 		Long: `Fetch a transaction and write its envelope, result and meta as separate
 fixture files, each stamped with the network, ledger and capture time so it
-can be re-checked later with focus verify.`,
+can be re-checked later with focus verify.
+
+A capture from a private or staging network may carry data that must not be
+committed. --sanitize masks text memos, data entry values and anything shaped
+like a secret key; --mask-memo, --scrub-data and --scrub-keys pick one each.
+A sanitized fixture no longer matches the chain, so verify skips it.`,
 		Example: `  focus capture tx 2b2e276a… --out testdata/
-  focus capture tx 2b2e276a… --out testdata/ --prefix failed_payment`,
+  focus capture tx 2b2e276a… --out testdata/ --prefix failed_payment
+  focus capture tx 2b2e276a… --out testdata/ --sanitize`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			endpoint, err := cfg.endpoint()
@@ -168,7 +174,7 @@ can be re-checked later with focus verify.`,
 				return err
 			}
 			return writeFixtures(cmd.Context(), src, records,
-				cfg.outDir(), cfg.prefix(), cfg.force(), cfg.maskAddresses(), stdout)
+				cfg.outDir(), cfg.prefix(), cfg.force(), cfg.maskAddresses(), cfg.sanitizer(), stdout)
 		},
 	}
 
@@ -188,7 +194,7 @@ can be re-checked later with focus verify.`,
 				return err
 			}
 			return writeFixtures(cmd.Context(), src, records,
-				cfg.outDir(), cfg.prefix(), cfg.force(), cfg.maskAddresses(), stdout)
+				cfg.outDir(), cfg.prefix(), cfg.force(), cfg.maskAddresses(), cfg.sanitizer(), stdout)
 		},
 	}
 
@@ -301,6 +307,7 @@ func writeFixtures(
 	records []capture.Record,
 	outDir, prefix string,
 	force, maskAddresses bool,
+	sanitizer capture.Sanitizer,
 	stdout io.Writer,
 ) error {
 	if maskAddresses {
@@ -312,6 +319,13 @@ func writeFixtures(
 			masked[i].Anonymized = true
 		}
 		records = masked
+	}
+	if sanitizer.Enabled() {
+		sanitized, err := sanitizer.Sanitize(records)
+		if err != nil {
+			return err
+		}
+		records = sanitized
 	}
 	fixtures, err := capture.Capture(ctx, src, records, now())
 	if err != nil {
