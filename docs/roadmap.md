@@ -12,7 +12,9 @@ Working and tested:
   signature count, fee-bump, and the source account an individual operation
   names — including the account it falls back to when it names none
 - Time- and ledger-bound assertions, comparing the window a precondition sets
-  against the window a test expects
+  against the window a test expects, plus the length of that window, the
+  assertion that a transaction declares no time bounds at all, and the
+  matching assertions named `AssertTimeBounds` and `AssertLedgerBounds`
 - Memo assertions by value: text, ID, 32-byte hash and return memos, each in
   the form the caller already holds it, plus the assertion that there is none
 - Operation-sequence assertions, matching the exact ordered operation types

@@ -80,6 +80,36 @@ func TestBuildPayment(t *testing.T) {
 Every assertion accepts XDR in whatever form your code produced it — a base64
 string, raw `[]byte`, any `xdr.*` value, or an already-decoded `*lens.Value`.
 
+### Preconditions
+
+A transaction can promise the network a window in which it is valid. The
+assertions read that promise out of the envelope — from the V1
+preconditions or from the older V0 field — and check it:
+
+```go
+focus.AssertTimeBounds(t, envelope, minTime, maxTime)   // exactly these bounds
+focus.AssertTimeBoundsWindow(t, envelope, 5*time.Minute) // a window this long
+focus.AssertNoTimeBounds(t, envelope)                    // never expires
+focus.AssertLedgerBounds(t, envelope, minLedger, maxLedger)
+```
+
+A bound of zero means "unbounded", the protocol's own convention, so `0, 0`
+asserts that the transaction declares no bounds at all. The bounds are shown
+both as the seconds the protocol stores and as the UTC dates a person reads:
+
+```
+    submit_test.go:44: AssertTimeBounds: time bounds differ
+
+      got   valid from 2025-10-09T12:26:40Z until 2025-10-09T12:31:40Z
+      want  no time bounds (valid indefinitely)
+
+      min time is 0 (unbounded)
+      max time is 0 (unbounded)
+```
+
+A fee-bump envelope is read through to the inner transaction, since that is
+the one whose validity the protocol checks.
+
 ### Results, in plain English
 
 ```go

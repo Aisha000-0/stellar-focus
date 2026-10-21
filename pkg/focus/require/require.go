@@ -11,6 +11,8 @@
 package require
 
 import (
+	"time"
+
 	"github.com/stellar/go-stellar-sdk/xdr"
 
 	"github.com/stellar-optics/stellar-focus/pkg/focus"
@@ -98,11 +100,36 @@ func TimeboundsValid(t focus.TB, envelope focus.Value, minTime, maxTime int64) {
 	focus.AssertTimeboundsValid(fatal(t), envelope, minTime, maxTime)
 }
 
+// TimeBounds is focus.AssertTimeBounds, stopping the test on failure.
+func TimeBounds(t focus.TB, envelope focus.Value, wantMinTime, wantMaxTime int64) {
+	t.Helper()
+	focus.AssertTimeBounds(fatal(t), envelope, wantMinTime, wantMaxTime)
+}
+
+// TimeBoundsWindow is focus.AssertTimeBoundsWindow, stopping the test on
+// failure.
+func TimeBoundsWindow(t focus.TB, envelope focus.Value, wantDuration time.Duration) {
+	t.Helper()
+	focus.AssertTimeBoundsWindow(fatal(t), envelope, wantDuration)
+}
+
+// NoTimeBounds is focus.AssertNoTimeBounds, stopping the test on failure.
+func NoTimeBounds(t focus.TB, envelope focus.Value) {
+	t.Helper()
+	focus.AssertNoTimeBounds(fatal(t), envelope)
+}
+
 // LedgerboundsValid is focus.AssertLedgerboundsValid, stopping the test on
 // failure.
 func LedgerboundsValid(t focus.TB, envelope focus.Value, minLedger, maxLedger uint32) {
 	t.Helper()
 	focus.AssertLedgerboundsValid(fatal(t), envelope, minLedger, maxLedger)
+}
+
+// LedgerBounds is focus.AssertLedgerBounds, stopping the test on failure.
+func LedgerBounds(t focus.TB, envelope focus.Value, wantMinLedger, wantMaxLedger uint32) {
+	t.Helper()
+	focus.AssertLedgerBounds(fatal(t), envelope, wantMinLedger, wantMaxLedger)
 }
 
 // Memo is focus.AssertMemo, stopping the test on failure.
