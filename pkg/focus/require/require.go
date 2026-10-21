@@ -42,6 +42,13 @@ func EnvelopeEqual(t focus.TB, want, got focus.Value, opts ...focus.Option) {
 	focus.AssertEnvelopeEqual(fatal(t), want, got, opts...)
 }
 
+// EnvelopeEqualUnordered is focus.AssertEnvelopeEqualUnordered, stopping the
+// test on failure.
+func EnvelopeEqualUnordered(t focus.TB, want, got focus.Value, opts ...focus.Option) {
+	t.Helper()
+	focus.AssertEnvelopeEqualUnordered(fatal(t), want, got, opts...)
+}
+
 // ResultEqual is focus.AssertResultEqual, stopping the test on failure.
 func ResultEqual(t focus.TB, want, got focus.Value, opts ...focus.Option) {
 	t.Helper()
@@ -129,6 +136,37 @@ func MemoReturnEqual(t focus.TB, envelope focus.Value, want focus.Value) {
 	focus.AssertMemoReturnEqual(fatal(t), envelope, want)
 }
 
+// MemoText is focus.AssertMemoText, stopping the test on failure.
+func MemoText(t focus.TB, envelope focus.Value, want string) {
+	t.Helper()
+	focus.AssertMemoText(fatal(t), envelope, want)
+}
+
+// MemoID is focus.AssertMemoID, stopping the test on failure.
+func MemoID(t focus.TB, envelope focus.Value, want uint64) {
+	t.Helper()
+	focus.AssertMemoID(fatal(t), envelope, want)
+}
+
+// MemoHash is focus.AssertMemoHash, stopping the test on failure.
+func MemoHash(t focus.TB, envelope focus.Value, want [32]byte) {
+	t.Helper()
+	focus.AssertMemoHash(fatal(t), envelope, want)
+}
+
+// NoMemo is focus.AssertNoMemo, stopping the test on failure.
+func NoMemo(t focus.TB, envelope focus.Value) {
+	t.Helper()
+	focus.AssertNoMemo(fatal(t), envelope)
+}
+
+// OperationSourceAccount is focus.AssertOperationSourceAccount, stopping the
+// test on failure.
+func OperationSourceAccount(t focus.TB, envelope focus.Value, opIndex int, want string) {
+	t.Helper()
+	focus.AssertOperationSourceAccount(fatal(t), envelope, opIndex, want)
+}
+
 // OperationCount is focus.AssertOperationCount, stopping the test on failure.
 func OperationCount(t focus.TB, envelope focus.Value, want int) {
 	t.Helper()
@@ -166,6 +204,18 @@ func SignaturesPresent(t focus.TB, envelope focus.Value, expectedPubKeys ...focu
 func SignatureThreshold(t focus.TB, envelope focus.Value, threshold int, expectedPubKeys ...focus.Value) {
 	t.Helper()
 	focus.AssertSignatureThreshold(fatal(t), envelope, threshold, expectedPubKeys...)
+}
+
+// SignatureHints is focus.AssertSignatureHints, stopping the test on failure.
+func SignatureHints(t focus.TB, envelope focus.Value, wantHints ...[4]byte) {
+	t.Helper()
+	focus.AssertSignatureHints(fatal(t), envelope, wantHints...)
+}
+
+// SignedBy is focus.AssertSignedBy, stopping the test on failure.
+func SignedBy(t focus.TB, envelope focus.Value, wantPublicKeys ...string) {
+	t.Helper()
+	focus.AssertSignedBy(fatal(t), envelope, wantPublicKeys...)
 }
 
 // Succeeded is focus.AssertSucceeded, stopping the test on failure.
@@ -244,10 +294,30 @@ func ReturnValue(t focus.TB, meta focus.Value, want focus.Value) {
 	focus.AssertReturnValue(fatal(t), meta, want)
 }
 
+// ReturnValueWithSpec is focus.AssertReturnValueWithSpec, stopping the test
+// on failure.
+func ReturnValueWithSpec(t focus.TB, meta focus.Value, want focus.Value, function string, spec []xdr.ScSpecEntry) {
+	t.Helper()
+	focus.AssertReturnValueWithSpec(fatal(t), meta, want, function, spec)
+}
+
 // ContractTrapped is focus.AssertContractTrapped, stopping the test on failure.
 func ContractTrapped(t focus.TB, result focus.Value) {
 	t.Helper()
 	focus.AssertContractTrapped(fatal(t), result)
+}
+
+// ContractTrappedWith is focus.AssertContractTrappedWith, stopping the test on
+// failure.
+func ContractTrappedWith(t focus.TB, result focus.Value, want string) {
+	t.Helper()
+	focus.AssertContractTrappedWith(fatal(t), result, want)
+}
+
+// ContractError is focus.AssertContractError, stopping the test on failure.
+func ContractError(t focus.TB, metaOrResult focus.Value, wantType xdr.ScErrorType, wantCode uint32) {
+	t.Helper()
+	focus.AssertContractError(fatal(t), metaOrResult, wantType, wantCode)
 }
 
 // ConstructorState is focus.AssertConstructorState, stopping the test on
@@ -457,4 +527,17 @@ func OfferCreated(t focus.TB, meta focus.Value, want focus.Offer) {
 func TradeExecuted(t focus.TB, value focus.Value, want focus.Trade) {
 	t.Helper()
 	focus.AssertTradeExecuted(fatal(t), value, want)
+}
+
+// Snapshot is focus.AssertSnapshot, stopping the test on failure.
+func Snapshot(t focus.TB, name, got string, opts ...focus.SnapshotOption) {
+	t.Helper()
+	focus.AssertSnapshot(fatal(t), name, got, opts...)
+}
+
+// FailureSnapshot is focus.AssertFailureSnapshot, stopping the test on
+// failure.
+func FailureSnapshot(t focus.TB, name string, fn func(focus.TB), opts ...focus.SnapshotOption) {
+	t.Helper()
+	focus.AssertFailureSnapshot(fatal(t), name, fn, opts...)
 }

@@ -25,7 +25,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/stellar-optics/stellar-xdr-lens/pkg/lens"
 	lensformat "github.com/stellar-optics/stellar-xdr-lens/pkg/lens/format"
+	"github.com/stellar/go-stellar-sdk/network"
 
 	"github.com/stellar-optics/stellar-focus/pkg/focus"
 )
@@ -69,23 +71,33 @@ type Fixture struct {
 
 // Provenance records where a captured fixture came from, so a stale fixture
 // can be traced and re-verified.
+//
+// NetworkPassphrase is recorded alongside the network name because the name
+// alone is ambiguous: a transaction hash and its signatures are bound to the
+// passphrase, and two private networks can share a name but not a
+// passphrase.
 type Provenance struct {
-	Network  string `json:"network"`
-	Ledger   uint32 `json:"ledger,omitempty"`
-	TxHash   string `json:"txHash,omitempty"`
-	At       string `json:"at"`
-	Endpoint string `json:"endpoint,omitempty"`
+	Network           string `json:"network"`
+	NetworkPassphrase string `json:"networkPassphrase,omitempty"`
+	Ledger            uint32 `json:"ledger,omitempty"`
+	TxHash            string `json:"txHash,omitempty"`
+	At                string `json:"at"`
+	Endpoint          string `json:"endpoint,omitempty"`
+	Anonymized        bool   `json:"anonymized,omitempty"`
+	Sanitized         bool   `json:"sanitized,omitempty"`
 }
 
 // Golden compares values against golden files on disk.
 type Golden struct {
-	t       focus.TB
-	dir     string
-	suffix  string
-	format  Format
-	opts    []focus.Option
-	desc    string
-	typeHnt string
+	t                focus.TB
+	dir              string
+	suffix           string
+	format           Format
+	opts             []focus.Option
+	noiseSuppression bool
+	desc             string
+	typeHnt          string
+	vars             any
 }
 
 // Opt configures a Golden.
@@ -118,6 +130,12 @@ func WithOptions(opts ...focus.Option) Opt {
 	return func(g *Golden) { g.opts = append(g.opts, opts...) }
 }
 
+// WithNoiseSuppression controls automatic normalization of volatile XDR fields.
+// It is enabled by default; disable it when a test intentionally checks them.
+func WithNoiseSuppression(enabled bool) Opt {
+	return func(g *Golden) { g.noiseSuppression = enabled }
+}
+
 // WithDescription sets the description written into new golden files.
 func WithDescription(d string) Opt {
 	return func(g *Golden) { g.desc = d }
@@ -129,9 +147,17 @@ func WithType(typeName string) Opt {
 	return func(g *Golden) { g.typeHnt = typeName }
 }
 
+// WithVariables supplies data used to interpolate templates in loaded fixtures.
+func WithVariables(variables any) Opt {
+	return func(g *Golden) { g.vars = variables }
+}
+
 // New returns a Golden bound to a test.
 func New(t focus.TB, opts ...Opt) *Golden {
-	g := &Golden{t: t, dir: "testdata", suffix: JSON.DefaultSuffix(), format: JSON}
+	g := &Golden{
+		t: t, dir: "testdata", suffix: JSON.DefaultSuffix(), format: JSON,
+		noiseSuppression: true,
+	}
 	for _, o := range opts {
 		o(g)
 	}
@@ -175,6 +201,13 @@ func (g *Golden) Assert(name string, actual focus.Value) bool {
 		g.t.Errorf("golden: reading %s: %v", path, err)
 		return false
 	}
+	if g.vars != nil {
+		want, err = InterpolateFixture(want, g.vars)
+		if err != nil {
+			g.t.Errorf("golden: interpolating %s: %v", path, err)
+			return false
+		}
+	}
 
 	typeName := g.typeHnt
 	if typeName == "" {
@@ -184,7 +217,11 @@ func (g *Golden) Assert(name string, actual focus.Value) bool {
 	// The comparison is against the stored XDR, never the decoded rendering:
 	// the decoded form exists for humans reading diffs, and treating it as
 	// authoritative would make the assertion depend on lens's formatting.
-	ok := focus.AssertEqualAs(g.t, typeName, want.XDR, actual, g.opts...)
+	opts := g.opts
+	if g.noiseSuppression {
+		opts = append(noiseSuppressionOptions(), opts...)
+	}
+	ok := focus.AssertEqualAs(g.t, typeName, want.XDR, actual, opts...)
 	if !ok {
 		g.t.Errorf("golden: %s is out of date.\n"+
 			"If the change above is intended, re-record it with:\n\n    go test ./... -focus.update\n", path)
@@ -219,14 +256,97 @@ func Build(v focus.Value, typeName, description string, provenance *Provenance) 
 
 	// The decoded section is lens's own JSON, so it matches what
 	// `lens decode --json` prints for the same payload.
+	rendered, err := renderDecoded(decoded)
+	if err != nil {
+		return nil, err
+	}
+	fixture.Decoded = rendered
+
+	return fixture, nil
+}
+
+// renderDecoded renders a decoded value as the JSON tree a fixture stores.
+func renderDecoded(decoded *lens.Value) (json.RawMessage, error) {
 	var buf bytes.Buffer
 	f := lensformat.NewJSONFormatter(lensformat.WithIndent("  "))
 	if err := f.Format(&buf, decoded); err != nil {
 		return nil, fmt.Errorf("rendering decoded form: %w", err)
 	}
-	fixture.Decoded = json.RawMessage(bytes.TrimSpace(buf.Bytes()))
+	return json.RawMessage(bytes.TrimSpace(buf.Bytes())), nil
+}
 
-	return fixture, nil
+// Refresh re-renders the decoded section of a fixture from the XDR it stores.
+//
+// The XDR is the source of truth and the decoded tree beside it is what a
+// human reads in a pull request. When the formatter improves, or the
+// protocol gains a field, that tree goes stale — and re-recording the
+// fixtures to fix it would re-record the data too. Refresh touches only the
+// decoded section: the format, the type, the description, the XDR and the
+// capture provenance keep their values.
+//
+// It reports whether the file on disk changed. A fixture whose decoded
+// section is already current is left alone, so the command is safe to run
+// over a whole testdata directory.
+func Refresh(path string) (bool, error) {
+	format := FormatForPath(path)
+
+	fixture, err := LoadAs(path, format)
+	if err != nil {
+		return false, err
+	}
+
+	decoded, err := RefreshedDecoded(fixture)
+	if err != nil {
+		return false, err
+	}
+
+	refreshed := *fixture
+	refreshed.Decoded = decoded
+
+	serializer, err := SerializerFor(format)
+	if err != nil {
+		return false, err
+	}
+	data, err := serializer.Marshal(&refreshed)
+	if err != nil {
+		return false, fmt.Errorf("rendering %s: %w", path, err)
+	}
+
+	current, err := os.ReadFile(path)
+	if err != nil {
+		return false, err
+	}
+	if bytes.Equal(current, data) {
+		return false, nil
+	}
+
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		return false, fmt.Errorf("writing %s: %w", path, err)
+	}
+	return true, nil
+}
+
+// RefreshedDecoded returns the decoded section a fixture would carry after a
+// refresh, without writing anything.
+//
+// It is what a dry run shows: the tree the fixture would have, next to the
+// one it has.
+func RefreshedDecoded(f *Fixture) (json.RawMessage, error) {
+	if f == nil {
+		return nil, errors.New("fixture is nil")
+	}
+	if f.Type == "" {
+		return nil, errors.New("fixture has no type, so there is nothing to decode")
+	}
+	if strings.TrimSpace(f.XDR) == "" {
+		return nil, errors.New("fixture has no XDR, so there is nothing to decode")
+	}
+
+	decoded, err := lens.DecodeAs(f.XDR, f.Type)
+	if err != nil {
+		return nil, fmt.Errorf("decoding %s: %w", f.Type, err)
+	}
+	return renderDecoded(decoded)
 }
 
 // Load reads a golden file, choosing the format from its extension. An
@@ -286,13 +406,36 @@ func SaveAs(path string, f *Fixture, format Format) error {
 	return nil
 }
 
+// KnownPassphrases maps the network names a capture records to the
+// passphrase those networks sign with.
+//
+// Only public networks are listed. A standalone or private network has a
+// passphrase of its own, which the capture source reports or the caller
+// supplies.
+var KnownPassphrases = map[string]string{
+	"testnet":   network.TestNetworkPassphrase,
+	"mainnet":   network.PublicNetworkPassphrase,
+	"futurenet": network.FutureNetworkPassphrase,
+}
+
+// PassphraseFor returns the passphrase of a known network, or an empty
+// string for a network it does not recognise.
+func PassphraseFor(networkName string) string {
+	return KnownPassphrases[networkName]
+}
+
 // NewProvenance records a capture at the given time.
-func NewProvenance(network, endpoint string, ledger uint32, txHash string, at time.Time) *Provenance {
+//
+// The network passphrase is filled in when the network is one of
+// KnownPassphrases; for any other network it is left empty for the caller to
+// set from the source or from an explicit value.
+func NewProvenance(networkName, endpoint string, ledger uint32, txHash string, at time.Time) *Provenance {
 	return &Provenance{
-		Network:  network,
-		Ledger:   ledger,
-		TxHash:   txHash,
-		At:       at.UTC().Format(time.RFC3339),
-		Endpoint: endpoint,
+		Network:           networkName,
+		NetworkPassphrase: PassphraseFor(networkName),
+		Ledger:            ledger,
+		TxHash:            txHash,
+		At:                at.UTC().Format(time.RFC3339),
+		Endpoint:          endpoint,
 	}
 }

@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stellar-optics/stellar-focus/internal/faketb"
 	"github.com/stellar-optics/stellar-focus/pkg/focus"
@@ -15,7 +16,7 @@ import (
 // A real captured mainnet envelope, shared with the sibling repositories.
 func envelope(t *testing.T) string {
 	t.Helper()
-	b, err := os.ReadFile(filepath.Join("..", "..", "testdata", "tx_failed.env.txt"))
+	b, err := os.ReadFile(filepath.Join("..", "..", "pkg", "fuzz", "testdata", "tx_failed.env.txt"))
 	if err != nil {
 		t.Fatalf("reading fixture: %v", err)
 	}
@@ -194,9 +195,30 @@ func TestAssertHonoursIgnoreOptions(t *testing.T) {
 	}
 
 	tb := faketb.New()
-	g := golden.New(tb, golden.WithDir(dir), golden.WithOptions(focus.IgnoreSequence()))
+	g := golden.New(tb, golden.WithDir(dir), golden.WithNoiseSuppression(false),
+		golden.WithOptions(focus.IgnoreSequence()))
 	if !g.Assert("env", actual) {
 		t.Errorf("ignore option was not applied:\n%s", tb.Output())
+	}
+}
+
+func TestAssertSuppressesSequenceNoiseByDefault(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	stored := buildEnvelopeSeq(t, 111, 100)
+	actual := buildEnvelopeSeq(t, 222, 100)
+	fixture, err := golden.Build(stored, "TransactionEnvelope", "", nil)
+	if err != nil {
+		t.Fatalf("Build() error = %v", err)
+	}
+	if err := golden.Save(filepath.Join(dir, "env.golden.json"), fixture); err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+
+	tb := faketb.New()
+	if !golden.New(tb, golden.WithDir(dir)).Assert("env", actual) {
+		t.Errorf("default noise suppression did not normalize sequence number:\n%s", tb.Output())
 	}
 }
 
@@ -260,4 +282,168 @@ func TestUpdateFlagIsRegistered(t *testing.T) {
 	}
 	// Update() returning false without panicking is the check; the flag is
 	// registered at package init and would panic on a duplicate name.
+}
+
+// TestRefreshRendersTheDecodedSectionAgain is what the refresh is for: the
+// decoded tree of a stored fixture goes stale when the formatter changes, and
+// re-recording the fixture to fix it would re-record the data too.
+func TestRefreshRendersTheDecodedSectionAgain(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "env.golden.json")
+
+	fixture, err := golden.Build(envelope(t), "TransactionEnvelope", "a failed Soroban call", nil)
+	if err != nil {
+		t.Fatalf("Build() error = %v", err)
+	}
+	fixture.Decoded = json.RawMessage(`{"stale": true}`)
+	if err := golden.Save(path, fixture); err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+
+	changed, err := golden.Refresh(path)
+	if err != nil {
+		t.Fatalf("Refresh() error = %v", err)
+	}
+	if !changed {
+		t.Error("Refresh() reported no change for a stale fixture")
+	}
+
+	refreshed, err := golden.Load(path)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if strings.Contains(string(refreshed.Decoded), "stale") {
+		t.Errorf("the decoded section was not refreshed:\n%s", refreshed.Decoded)
+	}
+	// Everything but the decoded section keeps its value.
+	if refreshed.XDR != fixture.XDR {
+		t.Error("the refresh changed the XDR")
+	}
+	if refreshed.Type != fixture.Type {
+		t.Errorf("the refresh changed the type: %q", refreshed.Type)
+	}
+	if refreshed.Description != fixture.Description {
+		t.Errorf("the refresh changed the description: %q", refreshed.Description)
+	}
+}
+
+// TestRefreshLeavesACurrentFixtureAlone checks that a refresh is safe to run
+// over a whole directory: nothing changes, so nothing is written.
+func TestRefreshLeavesACurrentFixtureAlone(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "env.golden.json")
+
+	fixture, err := golden.Build(envelope(t), "TransactionEnvelope", "", nil)
+	if err != nil {
+		t.Fatalf("Build() error = %v", err)
+	}
+	if err := golden.Save(path, fixture); err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+	before, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("reading file: %v", err)
+	}
+
+	changed, err := golden.Refresh(path)
+	if err != nil {
+		t.Fatalf("Refresh() error = %v", err)
+	}
+	if changed {
+		t.Error("Refresh() changed a fixture that was already current")
+	}
+
+	after, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("reading file: %v", err)
+	}
+	if string(before) != string(after) {
+		t.Error("the file was rewritten even though nothing changed")
+	}
+}
+
+// TestRefreshReportsAFixtureItCannotDecode checks that a fixture whose XDR
+// does not decode is reported rather than quietly left stale.
+func TestRefreshReportsAFixtureItCannotDecode(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "broken.golden.json")
+
+	fixture, err := golden.Build(envelope(t), "TransactionEnvelope", "", nil)
+	if err != nil {
+		t.Fatalf("Build() error = %v", err)
+	}
+	fixture.XDR = "!!! not xdr !!!"
+	if err := golden.Save(path, fixture); err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+
+	if _, err := golden.Refresh(path); err == nil {
+		t.Fatal("Refresh() returned no error for a fixture it could not decode")
+	} else if !strings.Contains(err.Error(), "decoding") {
+		t.Errorf("the error does not say what went wrong: %v", err)
+	}
+}
+
+func TestNewProvenanceFillsTheKnownPassphrase(t *testing.T) {
+	t.Parallel()
+
+	at := time.Date(2026, 8, 5, 12, 0, 0, 0, time.UTC)
+	tests := []struct {
+		network string
+		want    string
+	}{
+		{"testnet", "Test SDF Network ; September 2015"},
+		{"mainnet", "Public Global Stellar Network ; September 2015"},
+		{"futurenet", "Test SDF Future Network ; October 2022"},
+		{"standalone", ""},
+	}
+	for _, tc := range tests {
+		p := golden.NewProvenance(tc.network, "https://rpc.example", 1, "abc", at)
+		if p.NetworkPassphrase != tc.want {
+			t.Errorf("NewProvenance(%q).NetworkPassphrase = %q, want %q", tc.network, p.NetworkPassphrase, tc.want)
+		}
+		if got := golden.PassphraseFor(tc.network); got != tc.want {
+			t.Errorf("PassphraseFor(%q) = %q, want %q", tc.network, got, tc.want)
+		}
+	}
+}
+
+func TestPassphraseIsWrittenAndReadBack(t *testing.T) {
+	t.Parallel()
+
+	const passphrase = "Standalone Network ; February 2017"
+	provenance := golden.NewProvenance("standalone", "http://localhost:8000/rpc", 7, "abc",
+		time.Date(2026, 8, 5, 12, 0, 0, 0, time.UTC))
+	provenance.NetworkPassphrase = passphrase
+
+	fixture, err := golden.Build(envelope(t), "TransactionEnvelope", "", provenance)
+	if err != nil {
+		t.Fatalf("Build() error = %v", err)
+	}
+	path := filepath.Join(t.TempDir(), "envelope.golden.json")
+	if err := golden.Save(path, fixture); err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("reading %s: %v", path, err)
+	}
+	if !strings.Contains(string(raw), `"networkPassphrase": "Standalone Network ; February 2017"`) {
+		t.Errorf("the passphrase is not in the file:\n%s", raw)
+	}
+
+	loaded, err := golden.Load(path)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if loaded.Captured == nil || loaded.Captured.NetworkPassphrase != passphrase {
+		t.Errorf("loaded provenance = %+v, want passphrase %q", loaded.Captured, passphrase)
+	}
 }

@@ -41,6 +41,10 @@ const (
 	// DiagnosticContract is a contract event carried in the diagnostic stream,
 	// which is where the events of a failed call survive.
 	DiagnosticContract = "contract"
+	// DiagnosticError is the host saying the call died. Its payload is the
+	// ScError the invocation failed with, which is the only place the reason
+	// for a trap survives.
+	DiagnosticError = "error"
 	// DiagnosticSystem is a system event, emitted by the protocol rather than
 	// by a contract.
 	DiagnosticSystem = "system"
@@ -101,6 +105,10 @@ type DiagnosticEventMatch struct {
 	Topics []any
 	// Data matches the event payload. Nil matches any payload.
 	Data any
+	// Spec is the contract's specification: the ScSpecEntry list that names
+	// its types and events. It is optional, and it changes only how the
+	// payload is described, never whether it matches.
+	Spec []xdr.ScSpecEntry
 	// Call filters by whether the call that emitted the event succeeded.
 	Call CallOutcome
 }
@@ -380,7 +388,12 @@ func diagnosticEventMatches(e DiagnosticEvent, w DiagnosticEventMatch) bool {
 		// CallOutcomeAny, and any value outside the defined set, filters
 		// nothing.
 	}
-	return eventMatches(e.event, Event{ContractID: w.ContractID, Topics: w.Topics, Data: w.Data})
+	return eventMatches(e.event, Event{
+		ContractID: w.ContractID,
+		Topics:     w.Topics,
+		Data:       w.Data,
+		Spec:       w.Spec,
+	}, newSpecIndex(w.Spec))
 }
 
 // indexOfDiagnosticEvent returns the position of the first event at or after

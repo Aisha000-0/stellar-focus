@@ -107,9 +107,101 @@ focus.AssertEventEmitted(t, meta, focus.Event{
 })
 focus.AssertReturnValue(t, meta, xdr.ScVal{Type: xdr.ScValTypeScvU32, U32: &seven})
 focus.AssertContractTrapped(t, result)
+
+// A trap, with the host's own explanation of it from the diagnostic stream.
+focus.AssertContractTrappedWith(t, tx, "Error(Contract, #4)")
+
+// The error itself: which category, and which code.
+focus.AssertContractError(t, meta, xdr.ScErrorTypeSceContract, 101)
 ```
 
 A non-match lists the events that *were* emitted, so you are not left guessing.
+`AssertContractTrappedWith` takes a Soroban RPC `getTransaction` response, or a
+`focus.TrapEvidence{Result, Meta}` pair when the result and meta are separate
+fixtures, and searches the rendered host diagnostics.
+
+`AssertContractError` answers the question a trap leaves open: not *that* the
+contract failed but *how*. It reads the Soroban return value and the host's
+error diagnostic, and names both sides of the comparison:
+
+```
+    contract_test.go:42: AssertContractError: got ScErrorTypeContract(101), want ScErrorTypeContract(404)
+```
+
+The code is the number the error carries: a contract's own code for
+`ScErrorTypeContract`, and the numeric value of an `xdr.ScErrorCode` for the
+host's categories — `uint32(xdr.ScErrorCodeScecMissingValue)` for a missing
+storage entry.
+
+#### Naming the fields the contract chose
+
+A Soroban payload on the wire is a map of symbol keys, and a failure that
+shows only that is a failure you have to decode in your head. Give the
+assertion the contract's specification and it will speak the contract's
+language instead:
+
+```go
+spec, err := focus.ContractSpec(contractWasm)   // or build the entries yourself
+if err != nil {
+	t.Fatal(err)
+}
+
+focus.AssertEventEmitted(t, meta, focus.Event{
+	Topics: []any{"transfer"},
+	Data:   map[string]any{"from": from, "amount": 100},
+	Spec:   spec,
+})
+```
+
+A mismatch then names the field, not the wire:
+
+```console
+AssertEventEmitted: no event matched topics["transfer"]  data {amount: u128(200), from: GCJNH…ZST6}
+
+  events present (1):
+    [0] CBTG6…DXKK  topics["transfer"]  data {from: GCJNH…ZST6, amount: u128(100)} [ScValTypeScvMap]
+
+  differences from the closest event:
+    amount: want u128(200), got u128(100)
+```
+
+Both names are shown — the contract's field names and the XDR type — so the
+message can be read either way. The specification is optional everywhere: a
+test that cannot supply one still works, and the specification never changes
+*what* matches, only how it is described.
+
+`AssertReturnValueWithSpec` does the same for a return value, using the
+contract function's output type:
+
+```go
+focus.AssertReturnValueWithSpec(t, meta, map[string]any{"amount": 42}, "withdraw", spec)
+```
+
+### Typed memos, sources and signers
+
+The display forms (`"text: hello"`, `"id: 42"`) make a wrong memo *type* read
+like a wrong memo *value*, so the typed assertions name the value the way the
+caller holds it:
+
+```go
+focus.AssertMemoText(t, env, "invoice-42")
+focus.AssertMemoID(t, env, 42)
+focus.AssertMemoHash(t, env, hash)     // a hash memo or a return memo
+focus.AssertNoMemo(t, env)
+
+focus.AssertOperationSourceAccount(t, env, 0, "GABC…")   // empty want: no override
+
+focus.AssertSignedBy(t, env, "GABC…")                     // by public key
+focus.AssertSignatureHints(t, env, [4]byte{0xde, 0xad, 0xbe, 0xef})
+```
+
+An operation may name a source account of its own, which replaces the
+transaction's for that operation alone; an empty want asserts that it names
+none, and the failure says which account the operation falls back to.
+
+A Stellar signature carries a four-byte hint rather than a public key, so a
+signature is attributed to a signer by the hint the protocol derives from that
+signer's key — the last four bytes of it.
 
 ### Ignoring what legitimately varies
 
@@ -136,6 +228,27 @@ Two deliberate behaviours:
 - **An ignore pattern that matches nothing is reported as a failure**, even
   when the values are otherwise equal. A stale pattern is a test quietly
   weakening, and this is the only moment anyone would notice.
+
+### Comparing arrays as sets
+
+Some XDR arrays are ordered and some are not. The signatures on a multi-signed
+transaction arrive in signing order, which is not part of what the transaction
+means, and a positional comparison reports one difference per element for what
+is really the same envelope.
+
+```go
+focus.AssertEnvelopeEqualUnordered(t, want, got)   // signatures compared as a set
+focus.AssertEnvelopeEqual(t, want, got, focus.SortPath("**.Signatures"))
+```
+
+The arrays at the matching paths are sorted before the diff, so `[sigA, sigB]`
+and `[sigB, sigA]` compare equal. Everything else is still compared the usual
+way: a missing signature is still a difference.
+
+The same two deliberate behaviours apply. The paths that were compared as
+unordered sets are named in the failure output, and a sort pattern that
+matches no array is reported as a failure, because a rule that quietly does
+nothing is the same problem as a stale ignore pattern.
 
 ### `require` for fatal assertions
 
@@ -223,17 +336,243 @@ testdata/handwritten.golden.json         SKIP    no capture provenance, so there
 3 checked: 2 ok, 0 drifted, 1 skipped
 ```
 
-`verify` exits non-zero on drift and prints the structural diff. A
+`verify` exits `2` on drift and prints the structural diff, `1` when a fixture
+could not be checked at all, and `0` when everything checked still matches. A
 hand-written fixture is reported as skipped rather than quietly passing a
 check it was never eligible for.
 
 Defaults to **testnet**; use `--network mainnet` or `--rpc-url`.
+
+### Linting fixtures
+
+A fixture that was hand-edited, or merged badly, can be subtly corrupt:
+invalid JSON, a missing field, an XDR that is not base64, a payload that
+decodes as another type. Those errors surface when a test fails — weeks
+later, in a suite nobody remembers writing.
+
+`focus lint` checks for them statically. No network, no chain, no test run:
+
+```sh
+focus lint testdata/
+```
+
+```console
+$ focus lint testdata/
+testdata/envelope.golden.json            ok
+testdata/result.golden.json              xdr: does not decode as a TransactionResult: …
+
+2 checked: 1 clean, 1 with problems
+```
+
+It checks that the file is valid JSON and holds only fields a fixture has,
+that the format is the one this version reads, that the type and the XDR are
+present, that the XDR is valid base64 and decodes as the type the fixture
+claims, and that a capture timestamp is RFC3339.
+
+It exits `1` when a fixture has a problem and `0` when everything is clean,
+so it can be a step in CI.
+### Capturing from Horizon
+
+Soroban RPC only keeps recent history, so a fixture for an old transaction
+cannot be captured from it at all. Horizon reaches further back and covers
+every transaction type, so it can be the source instead:
+
+```sh
+focus capture tx 2b2e276a8f99a292… --source horizon
+```
+
+`--source` is `rpc` (the default) or `horizon`. Each has its own default
+endpoint per network, and `--rpc-url` overrides the one in use.
+
+### Capturing from a history archive
+
+RPC keeps a few weeks of history; a Stellar history archive keeps all of it.
+`--archive-url` falls back to an archive for any transaction the source no
+longer has. An archive is laid out by checkpoint rather than indexed by hash,
+so give the ledger the transaction closed in:
+
+```sh
+focus capture tx 2b2e276a8f99a292… --network mainnet --ledger 3966820 \
+  --archive-url https://history.stellar.org/prd/core-live/core_live_001
+```
+
+An archive holds envelopes and results, not meta. `focus verify` with
+`--archive-url` uses the ledger each fixture recorded, so no `--ledger` is
+needed there.
+
+### Verifying offline
+
+`--file-source <dir>` reads XDR dumps from a directory instead of the
+network, so fixtures can be checked on an air-gapped CI runner:
+
+```sh
+focus verify testdata/ --file-source testdata/dumps/
+```
+
+A transaction is read from `{hash}.envelope.xdr`, `{hash}.result.xdr` and
+`{hash}.meta.xdr`, a ledger entry from `{key}.entry.xdr` with the key in
+URL-safe base64. Each file holds base64 XDR or the raw bytes; missing parts
+are skipped.
+
+### Network passphrases
+
+A fixture records the passphrase of the network it came from, since a
+transaction's hash and signatures are bound to it. RPC reports it; for
+testnet, mainnet and futurenet it is known; for anything else, give it:
+
+```sh
+focus capture tx 2b2e276a8f99a292… --network standalone \
+  --rpc-url http://localhost:8000/rpc --passphrase "Standalone Network ; February 2017"
+```
+
+### Sanitizing a capture
+
+A capture from a staging network can carry data that must not be committed.
+`--sanitize` masks it before the fixture is written:
+
+```sh
+focus capture tx 2b2e276a8f99a292… --sanitize
+```
+
+`--mask-memo` replaces text memos with `[REDACTED_MEMO]`, `--scrub-data`
+replaces data entry values with `[REDACTED_DATA]`, and `--scrub-keys`
+replaces anything shaped like a secret key (`S` and 55 more characters) with
+`[REDACTED_SECRET_KEY]`; `--sanitize` is all three. The decoded section is
+rendered from the masked XDR, so it is clean too. A sanitized fixture no
+longer matches the chain, so `focus verify` skips it.
+
+### Configuration
+
+Flags, `FOCUS_*` environment variables and a config file are three spellings
+of the same settings, resolved in that order:
+
+```sh
+focus verify testdata/ --network mainnet
+FOCUS_NETWORK=mainnet focus verify testdata/
+focus verify testdata/ --config focus.yaml   # or .focus.yaml in the working directory
+```
+
+```yaml
+# focus.yaml
+network: mainnet
+source: rpc
+rpc-url: https://mainnet.sorobanrpc.com
+timeout: 45s
+color: never
+out: testdata
+prefix: nightly
+force: false
+```
+
+An explicit `--config` must exist; a missing `.focus.yaml` is simply ignored.
+Invalid settings fail before any request is made.
+
+### Refreshing fixtures
+
+The XDR in a fixture is the source of truth; the decoded tree beside it is
+what a human reads. When `stellar-xdr-lens` improves its formatting, or the
+protocol gains a field, that tree goes stale — and the only way to fix it
+today is to re-record every fixture, which re-records the data too.
+
+```sh
+# Re-render the decoded section of every fixture, leaving the XDR alone
+focus refresh testdata/
+
+# See what would change, without writing anything
+focus refresh testdata/ --dry-run
+```
+
+```console
+$ focus refresh testdata/
+testdata/envelope.golden.json            updated
+testdata/result.golden.json              unchanged
+
+2 checked: 1 updated, 1 unchanged
+```
+
+The format, the type, the description, the XDR and the capture provenance all
+keep their values; only the decoded section is rewritten. A fixture that is
+already current is not rewritten at all, so the command is safe to run over a
+whole `testdata` directory and leaves an empty pull request when there is
+nothing to fix.
+
+## Snapshots
+
+Failure-message formatting is snapshotted so a layout change is a reviewable
+diff rather than a silent change in what users see:
+
+```go
+focus.AssertFailureSnapshot(t, "envelope_amount_mismatch", func(tb focus.TB) {
+	focus.AssertEnvelopeEqual(tb, want, got)
+})
+```
+
+Create or update snapshots with `FOCUS_UPDATE_SNAPSHOTS=1 go test ./...`. They
+live under `testdata/snapshots` as plain text, `.snap` files.
 
 ## Testing offline
 
 `go test ./...` makes **no network calls**. The RPC client sits behind an
 interface with an in-memory fake, so the whole suite runs offline and
 deterministically — including the tests of `focus capture` and `focus verify`.
+
+## Examples
+
+### Full Lifecycle (TypeScript)
+
+`examples/lifecycle.ts` demonstrates the complete Stellar transaction lifecycle
+on testnet using `@stellar/stellar-sdk`:
+
+1. **FUND** — Create a claimable balance with predicates
+2. **CLAIM** — Claim the balance by the designated recipient
+3. **ATTEST** — Record the claim on a Soroban contract
+4. **SETTLE** — Finalize via contract call
+
+```bash
+cd examples
+npm install
+export FUNDER_SECRET="S..."      # testnet account with XLM
+export CLAIMANT_SECRET="S..."    # testnet recipient
+# Optional for attest/settle:
+export ATTESTOR_SECRET="S..."
+export ATTESTATION_CONTRACT_ID="C..."
+npm run dev
+```
+
+The script prints transaction hashes at each step. View them on
+[Stellar Expert](https://stellar.expert/explorer/testnet) to verify.
+
+**CI** runs `npm run typecheck` in `examples/` to keep the example compiling.
+
+See [examples/README.md](examples/README.md) for full setup and a sample
+Soroban contract for the attest/settle steps.
+
+## Fuzzing
+
+The XDR this project has been reading is a seed corpus worth having: real
+mainnet transactions, captured and kept as fixtures. `pkg/fuzz` hands them to
+a fuzzer, embedded, so there is no path to get wrong:
+
+```go
+import "github.com/stellar-optics/stellar-focus/pkg/fuzz"
+
+func FuzzDecodeEnvelope(f *testing.F) {
+	for _, seed := range fuzz.CorpusFor("TransactionEnvelope") {
+		f.Add(seed)
+	}
+	f.Fuzz(func(t *testing.T, data []byte) {
+		var env xdr.TransactionEnvelope
+		_ = xdr.SafeUnmarshal(data, &env)
+	})
+}
+```
+
+```console
+$ go test -fuzz FuzzDecodeEnvelope -fuzztime 30s
+```
+
+`fuzz.Corpus()` returns every seed, `fuzz.CorpusFor(type)` the seeds of one
+XDR type, and `fuzz.Types()` the types the corpus covers.
 
 ## Project status
 
@@ -242,8 +581,12 @@ before v1.0.
 
 - Assertions for envelopes, results, fields and Soroban events.
 - Golden files with `-focus.update`; capture and verify against a live network.
-- Soroban values render as the XDR wire shape — there is no contract-spec
-  decoding yet. See [docs/roadmap.md](docs/roadmap.md).
+- Failure-message snapshots, a unified flag/env/config file, documented exit
+  codes, and an offline end-to-end suite for the command.
+- Soroban values can be matched and rendered by the contract's own field
+  names, when the test supplies the contract's specification.
+- Capture from Soroban RPC or from Horizon, and an embedded fuzz corpus of
+  real mainnet XDR.
 
 ## Contributing
 

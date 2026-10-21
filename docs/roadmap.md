@@ -9,18 +9,34 @@ Working and tested:
 - Structural equality assertions for envelopes, results and metas, with
   failure output that names the changed field path
 - Field assertions: source, fee, sequence, memo, operation counts and types,
-  signature count, fee-bump
+  signature count, fee-bump, and the source account an individual operation
+  names — including the account it falls back to when it names none
 - Time- and ledger-bound assertions, comparing the window a precondition sets
   against the window a test expects
-- Memo assertions by value: text, ID, 32-byte hash and return memos
+- Memo assertions by value: text, ID, 32-byte hash and return memos, each in
+  the form the caller already holds it, plus the assertion that there is none
 - Operation-sequence assertions, matching the exact ordered operation types
 - Signer assertions: which keys attached a signature — including pre-auth-tx,
   hash-x and signed-payload signers, and both signature sets of a fee-bump
-  envelope — plus M-of-N signature thresholds
+  envelope — plus M-of-N signature thresholds, and the same question asked by
+  four-byte signature hint
 - Result assertions using Horizon's short codes, with lens's plain-English
   explanation and hint; operation result codes can be checked by short name,
   and an unknown code or an XDR constant name is called out as such
 - Soroban: event matching, event counts, return values, contract traps
+- Contract errors by category and code: the `ScError` a failed invocation
+  recorded — a contract's own error code, or one of the host's named codes —
+  read from the Soroban return value or from the host's error diagnostic
+- Contract specifications: with a contract's `ScSpecEntry` list, events and
+  return values are matched and rendered by the field names the contract's
+  author chose — `{from: Address, amount: u128}` rather than XDR
+  discriminants — and a failure names the field that differs. The
+  specification can be read out of a compiled contract with
+  `focus.ContractSpec`
+- Contract traps explained from the host's own diagnostics: the result proves
+  the trap and the diagnostic stream says why — `Error(Contract, #4)`,
+  `Error(WasmVm, InvalidAction)` and the rest — read from a `getTransaction`
+  response or from a result/meta fixture pair with no network call
 - Soroban diagnostic streams: the order of a contract call's diagnostic events
   — call frames, logs, and the events of calls that failed — and the ledger the
   stream was emitted in, with that ledger's close time
@@ -44,6 +60,10 @@ Working and tested:
 - Account data (manage-data): the key-value entries a transaction left on an
   account, compared as bytes, with the first differing byte named and
   deletion asserted separately from assignment
+- Ledger-change assertions: the entries a transaction created, modified and
+  deleted, matched by ledger key, and the balance an account saw change
+  across every change in the meta — with the changes that *were* present
+  listed on failure
 - Liquidity pools: the reserve movement and the LP shares minted or burned by
   a deposit or a withdrawal, measured across the whole transaction, with a
   swap against the pool reported as a swap rather than as a wrong amount
@@ -58,10 +78,59 @@ Working and tested:
 - `require` mirrors with `Fatalf` semantics, with 100% parity enforced by an
   AST audit (`pkg/focus/require/audit.go`)
 - Golden files in reviewable JSON, with `-focus.update`
+- Golden comparisons that normalize volatile sequence and time fields by
+  default, with an opt-out, plus a benchmark of the structural comparison path
 - Fixtures in JSON, YAML or plain text — chosen by file extension, or with
   `WithFormat` — all three lossless, deterministic and whitespace-normalized,
   with the text form using lens's dotted-path vocabulary
-- `focus capture` and `focus verify` against a live network
+- Golden fixture schema validation, Go-template interpolation, recursive
+  directory discovery and table-driven assertion running, plus deterministic
+  export to Go fuzz seed corpora
+- `focus capture` and `focus verify` against a live network, from a Soroban
+  RPC endpoint or from Horizon, chosen with `--source`
+- An embedded fuzz corpus of the repository's captured mainnet XDR, for
+  downstream projects that want to fuzz their own decoders (`pkg/fuzz`)
+- Unified CLI configuration: flags, `FOCUS_*` environment variables and a
+  config file, with one documented precedence order and validation before any
+  request (`internal/cli/flags.go`)
+- A documented exit-code contract: 0 success, 1 the command could not run, 2
+  `verify` ran and found drift, with sentinel errors for classification
+  (`internal/cli/exitcodes.go`). **Migration note:** `focus verify` used to
+  exit 1 for both drift and "could not check"; it now exits 2 for drift and
+  keeps 1 for a check that could not run, so a script that treated `1` as
+  "drift" should test for `2`.
+- Snapshot testing for failure-message formatting, so a layout refactor shows
+  up as a reviewable `.snap` diff rather than passing silently
+  (`pkg/focus/snapshot.go`)
+- End-to-end tests that build the real command and run it in temporary
+  directories, entirely offline (`cmd/focus/e2e_test.go`)
+- Coordinated multi-transaction bundles: one manifest ties a set of related
+  captures together, fetched all-or-nothing and re-verified member by member
+  (`pkg/capture/bundle.go`)
+- Rate-limited live scraping with an on-disk cache under `.focus/cache`, so a
+  repetitive capture run is fast for the caller and gentle on the endpoint
+  (`pkg/capture/cache.go`)
+- Deterministic replay tests generated straight from captured fixtures: same
+  fixture in, byte-identical `_test.go` out, red with a field diff when the
+  fixture or a decoder moves (`pkg/capture/codegen.go`)
+- Transaction preflight simulation capture: `simulateTransaction` responses
+  recorded as per-payload fixtures — transaction data with its resource
+  footprint, diagnostic events, authorization-tree nodes and host function
+  returns — with the host's rejection surfaced as `ErrSimulationFailed`
+  (`pkg/capture/simulate.go`)
+- Latest-ledger header capture with the assertable fields decoded from the
+  XDR: protocol version, base fee, base reserve, total coins and sequence
+  (`pkg/capture/ledger_header.go`)
+- Deterministic corrupted-envelope mutator over real captures: a fixed seed
+  and step count always regenerates the same malformed variant, and the
+  report names each corrupted offset (`pkg/capture/mutate.go`)
+- Contract WASM archive capture: the ledger entry that names a deployed
+  contract's code, fetched by contract id and recorded whole so the bytes
+  travel with the transaction fixtures they belong to. The stored code hash
+  is checked against the bytes before anything is written, so a truncated
+  capture reports `ErrContractCodeHashMismatch` rather than archiving a
+  contract that does not match the one the ledger names
+  (`pkg/capture/contract_wasm.go`)
 - Dependency-light library, enforced by compiled-graph and AST tests
 - No assertion panics, enforced by test via a panic-safe harness
   (`SafeExec`/`SafeCall` in `pkg/focus/safe_exec.go`)
@@ -82,9 +151,13 @@ Working and tested:
 
 Known limits, stated plainly:
 
-- **No contract-spec decoding.** Soroban values render as the XDR wire shape,
-  so an event payload shows its structure rather than the contract's field
-  names. This is the biggest gap and it is shared with the sibling projects.
+- **Contract-spec decoding lives here, not in lens.** A contract's
+  specification can be given to an assertion, and events and return values
+  are then matched and rendered by the field names the contract's author
+  chose. The decoding itself lives in `pkg/focus/spec.go` rather than in
+  [stellar-xdr-lens](https://github.com/stellar-optics/stellar-xdr-lens),
+  which is where it would also serve `lens decode` and `prism events`;
+  pushing it down there is still the better home for it.
 - **YAML is a subset.** Write and read by `pkg/golden` itself, since a YAML
   library would be inherited by everyone who imports these test helpers. Block
   mappings, block sequences, single-line scalars and `{}`/`[]` are supported;
@@ -112,27 +185,20 @@ Known limits, stated plainly:
 
 ## Near term
 
-### Contract-spec-aware assertions
+### Contract-spec decoding in lens
 
-The one thing that would most improve Soroban tests: given a contract's
-`ScSpecEntry` definitions, match events and return values by field name
-instead of wire structure, and render them the same way in failures.
-
-This belongs in [stellar-xdr-lens](https://github.com/stellar-optics/stellar-xdr-lens)
+The decoding now lives in `pkg/focus/spec.go`: given a contract's
+`ScSpecEntry` definitions, events and return values are matched and
+rendered by field name instead of wire structure. It belongs in
+[stellar-xdr-lens](https://github.com/stellar-optics/stellar-xdr-lens)
 rather than here, since `lens decode` and `prism events` would benefit
 identically — but focus is where the ergonomic payoff is largest, so it is
-worth pushing for.
+worth pushing down.
 
 ### Horizon as a capture source
 
-`capture.Source` is a small interface and Horizon reaches further back than
-RPC's retention window, which matters for fixtures of older transactions.
-
-### Fuzz helpers
-
-A `focus.Fuzz` seed corpus of real captured XDR would make it easy for other
-projects to fuzz their own decoders. The corpus already exists in `testdata`;
-what is missing is a documented way to consume it.
+Done: `capture.HorizonSource` serves Horizon's REST API, and `--source
+rpc|horizon` chooses between the two in the CLI.
 
 ## Later, and less certain
 

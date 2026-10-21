@@ -15,7 +15,7 @@ import (
 
 func fixture(t *testing.T, name string) string {
 	t.Helper()
-	b, err := os.ReadFile(filepath.Join("..", "..", "..", "testdata", name))
+	b, err := os.ReadFile(filepath.Join("..", "..", "..", "pkg", "fuzz", "testdata", name))
 	if err != nil {
 		t.Fatalf("reading %s: %v", name, err)
 	}
@@ -102,6 +102,9 @@ func TestEveryMirrorReportsFatally(t *testing.T) {
 		{"EventCount", func(tb *faketb.TB) { require.EventCount(tb, "bad", 1) }},
 		{"ReturnValue", func(tb *faketb.TB) { require.ReturnValue(tb, "bad", "x") }},
 		{"ContractTrapped", func(tb *faketb.TB) { require.ContractTrapped(tb, "bad") }},
+		{"ContractTrappedWith", func(tb *faketb.TB) {
+			require.ContractTrappedWith(tb, "bad", "Error(Contract, #4)")
+		}},
 		{"EntryCreated", func(tb *faketb.TB) { require.EntryCreated(tb, "bad", "bad") }},
 		{"EntryModified", func(tb *faketb.TB) { require.EntryModified(tb, "bad", "bad") }},
 		{"EntryDeleted", func(tb *faketb.TB) { require.EntryDeleted(tb, "bad", "bad") }},
@@ -123,6 +126,22 @@ func TestEveryMirrorReportsFatally(t *testing.T) {
 		}},
 		{"SignatureThreshold", func(tb *faketb.TB) {
 			require.SignatureThreshold(tb, env, 1, "GCJNHFXJEQEY54NPKU4DBMT5WOBJUHMYSFBDAQF4OMTEGJN4BQU7ZST6")
+		}},
+		{"SignatureHints", func(tb *faketb.TB) {
+			require.SignatureHints(tb, env, [4]byte{0xde, 0xad, 0xbe, 0xef})
+		}},
+		{"SignedBy", func(tb *faketb.TB) {
+			require.SignedBy(tb, env, "GCJNHFXJEQEY54NPKU4DBMT5WOBJUHMYSFBDAQF4OMTEGJN4BQU7ZST6")
+		}},
+		{"ContractError", func(tb *faketb.TB) {
+			require.ContractError(tb, "bad", xdr.ScErrorTypeSceContract, 4)
+		}},
+		{"MemoText", func(tb *faketb.TB) { require.MemoText(tb, env, "nope") }},
+		{"MemoID", func(tb *faketb.TB) { require.MemoID(tb, env, 7) }},
+		{"MemoHash", func(tb *faketb.TB) { require.MemoHash(tb, env, [32]byte{}) }},
+		{"NoMemo", func(tb *faketb.TB) { require.NoMemo(tb, "bad") }},
+		{"OperationSourceAccount", func(tb *faketb.TB) {
+			require.OperationSourceAccount(tb, env, 0, "GWRONG")
 		}},
 	}
 

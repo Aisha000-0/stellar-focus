@@ -14,9 +14,9 @@ import (
 
 // fixture reads real captured mainnet XDR, shared with the sibling
 // repositories.
-func fixture(t *testing.T, name string) string {
+func fixture(t testing.TB, name string) string {
 	t.Helper()
-	b, err := os.ReadFile(filepath.Join("..", "..", "testdata", name+".txt"))
+	b, err := os.ReadFile(filepath.Join("..", "..", "pkg", "fuzz", "testdata", name+".txt"))
 	if err != nil {
 		t.Fatalf("reading fixture %s: %v", name, err)
 	}
@@ -24,7 +24,7 @@ func fixture(t *testing.T, name string) string {
 }
 
 // mustMarshal builds base64 XDR from a concrete value.
-func mustMarshal(t *testing.T, v any) string {
+func mustMarshal(t testing.TB, v any) string {
 	t.Helper()
 	s, err := xdr.MarshalBase64(v)
 	if err != nil {

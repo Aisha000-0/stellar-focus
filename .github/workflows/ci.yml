@@ -16,6 +16,7 @@ permissions:
 
 env:
   GO_VERSION: "1.25"
+  NODE_VERSION: "20"
 
 jobs:
   build:
@@ -173,7 +174,7 @@ jobs:
           	g.Assert("envelope", strings.TrimSpace(string(b)))
           }
           GOTEST
-          cp testdata/tx_failed.env.txt "$tmp/envelope.txt"
+          cp pkg/fuzz/testdata/tx_failed.env.txt "$tmp/envelope.txt"
           cd "$tmp"
           go mod edit -require github.com/stellar-optics/stellar-focus@v0.0.0
           go mod edit -replace github.com/stellar-optics/stellar-focus="$GITHUB_WORKSPACE"
@@ -203,3 +204,25 @@ jobs:
           fi
           grep -q '"decoded"' testdata/envelope.golden.json \
             || { echo "::error::the golden file has no decoded section"; exit 1; }
+
+  typescript-check:
+    name: TypeScript type-check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: examples/package-lock.json
+
+      - name: Install TypeScript example deps
+        run: |
+          cd examples
+          npm ci
+
+      - name: Type-check lifecycle.ts
+        run: |
+          cd examples
+          npm run typecheck
