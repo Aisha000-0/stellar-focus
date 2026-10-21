@@ -52,6 +52,7 @@ const (
 	keyPrefix  = "prefix"
 	keyForce   = "force"
 	keyMask    = "mask-addresses"
+	keyPass    = "passphrase"
 )
 
 // The capture sources the command can talk to.
@@ -73,6 +74,7 @@ const (
 	defaultPrefix  = ""
 	defaultForce   = false
 	defaultMask    = false
+	defaultPass    = ""
 )
 
 // discoveredConfigFiles are checked, in order, when --config is not given.
@@ -108,6 +110,7 @@ func newConfig() *config {
 	v.SetDefault(keyOut, defaultOutDir)
 	v.SetDefault(keyPrefix, defaultPrefix)
 	v.SetDefault(keyForce, defaultForce)
+	v.SetDefault(keyPass, defaultPass)
 
 	return &config{v: v}
 }
@@ -129,6 +132,8 @@ func (c *config) bindRootFlags(root *cobra.Command) {
 		"timeout for a single RPC call")
 	flags.String(keyColor, defaultColor,
 		`when to colourise output: "auto", "always" or "never"`)
+	flags.String(keyPass, defaultPass,
+		"network passphrase, for a network focus cannot name or a source that does not report one")
 
 	c.bind(flags, configFlag)
 	c.bind(flags, keyNetwork)
@@ -136,6 +141,7 @@ func (c *config) bindRootFlags(root *cobra.Command) {
 	c.bind(flags, keySource)
 	c.bind(flags, keyTimeout)
 	c.bind(flags, keyColor)
+	c.bind(flags, keyPass)
 }
 
 // bindCaptureFlags declares the flags shared by both capture subcommands.
@@ -278,6 +284,12 @@ func (c *config) rpcURL() string {
 		return url
 	}
 	return strings.TrimSpace(c.v.GetString("rpc_url"))
+}
+
+// passphrase is the explicit network passphrase, empty when the source or
+// the network name is to decide it.
+func (c *config) passphrase() string {
+	return strings.TrimSpace(c.v.GetString(keyPass))
 }
 
 // timeout bounds a single RPC call.

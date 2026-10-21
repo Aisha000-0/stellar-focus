@@ -40,6 +40,17 @@ var newSource = func(kind, network, endpoint string, timeout time.Duration) capt
 	}
 }
 
+// openSource builds the configured capture source, bound to an explicit
+// network passphrase when one was given.
+func openSource(cfg *config) (capture.Source, error) {
+	endpoint, err := cfg.endpoint()
+	if err != nil {
+		return nil, usageErrorf("%v", err)
+	}
+	src := newSource(cfg.source(), cfg.network(), endpoint, cfg.timeout())
+	return capture.WithPassphrase(src, cfg.passphrase()), nil
+}
+
 // now is injectable so captures in tests carry a fixed timestamp.
 var now = time.Now
 
@@ -154,14 +165,15 @@ func newCaptureCmd(cfg *config, stdout, stderr io.Writer) *cobra.Command {
 fixture files, each stamped with the network, ledger and capture time so it
 can be re-checked later with focus verify.`,
 		Example: `  focus capture tx 2b2e276a… --out testdata/
-  focus capture tx 2b2e276a… --out testdata/ --prefix failed_payment`,
+  focus capture tx 2b2e276a… --out testdata/ --prefix failed_payment
+  focus capture tx 2b2e276a… --network standalone --rpc-url http://localhost:8000/rpc \
+    --passphrase "Standalone Network ; February 2017"`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			endpoint, err := cfg.endpoint()
+			src, err := openSource(cfg)
 			if err != nil {
-				return usageErrorf("%v", err)
+				return err
 			}
-			src := newSource(cfg.source(), cfg.network(), endpoint, cfg.timeout())
 
 			records, err := src.Transaction(cmd.Context(), args[0])
 			if err != nil {
@@ -177,11 +189,10 @@ can be re-checked later with focus verify.`,
 		Short: "Record a ledger entry",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			endpoint, err := cfg.endpoint()
+			src, err := openSource(cfg)
 			if err != nil {
-				return usageErrorf("%v", err)
+				return err
 			}
-			src := newSource(cfg.source(), cfg.network(), endpoint, cfg.timeout())
 
 			records, err := src.LedgerEntry(cmd.Context(), args[0])
 			if err != nil {

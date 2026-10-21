@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stellar-optics/stellar-focus/internal/faketb"
 	"github.com/stellar-optics/stellar-focus/pkg/focus"
@@ -386,5 +387,63 @@ func TestRefreshReportsAFixtureItCannotDecode(t *testing.T) {
 		t.Fatal("Refresh() returned no error for a fixture it could not decode")
 	} else if !strings.Contains(err.Error(), "decoding") {
 		t.Errorf("the error does not say what went wrong: %v", err)
+	}
+}
+
+func TestNewProvenanceFillsTheKnownPassphrase(t *testing.T) {
+	t.Parallel()
+
+	at := time.Date(2026, 8, 5, 12, 0, 0, 0, time.UTC)
+	tests := []struct {
+		network string
+		want    string
+	}{
+		{"testnet", "Test SDF Network ; September 2015"},
+		{"mainnet", "Public Global Stellar Network ; September 2015"},
+		{"futurenet", "Test SDF Future Network ; October 2022"},
+		{"standalone", ""},
+	}
+	for _, tc := range tests {
+		p := golden.NewProvenance(tc.network, "https://rpc.example", 1, "abc", at)
+		if p.NetworkPassphrase != tc.want {
+			t.Errorf("NewProvenance(%q).NetworkPassphrase = %q, want %q", tc.network, p.NetworkPassphrase, tc.want)
+		}
+		if got := golden.PassphraseFor(tc.network); got != tc.want {
+			t.Errorf("PassphraseFor(%q) = %q, want %q", tc.network, got, tc.want)
+		}
+	}
+}
+
+func TestPassphraseIsWrittenAndReadBack(t *testing.T) {
+	t.Parallel()
+
+	const passphrase = "Standalone Network ; February 2017"
+	provenance := golden.NewProvenance("standalone", "http://localhost:8000/rpc", 7, "abc",
+		time.Date(2026, 8, 5, 12, 0, 0, 0, time.UTC))
+	provenance.NetworkPassphrase = passphrase
+
+	fixture, err := golden.Build(envelope(t), "TransactionEnvelope", "", provenance)
+	if err != nil {
+		t.Fatalf("Build() error = %v", err)
+	}
+	path := filepath.Join(t.TempDir(), "envelope.golden.json")
+	if err := golden.Save(path, fixture); err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("reading %s: %v", path, err)
+	}
+	if !strings.Contains(string(raw), `"networkPassphrase": "Standalone Network ; February 2017"`) {
+		t.Errorf("the passphrase is not in the file:\n%s", raw)
+	}
+
+	loaded, err := golden.Load(path)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if loaded.Captured == nil || loaded.Captured.NetworkPassphrase != passphrase {
+		t.Errorf("loaded provenance = %+v, want passphrase %q", loaded.Captured, passphrase)
 	}
 }
