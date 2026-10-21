@@ -180,12 +180,43 @@ func (g *Golden) Path(name string) string {
 // what to do next.
 func (g *Golden) Assert(name string, actual focus.Value) bool {
 	g.t.Helper()
+	return g.compare(g.t, name, actual)
+}
 
+// Require compares a value against the named golden file and stops the test
+// when it does not match.
+//
+// It is the fatal counterpart of Assert, for the tests where everything
+// after the comparison would be meaningless: a fixture that does not exist,
+// a decode that failed, a transaction that was never built.
+//
+// The diagnostic is the one Assert reports — the same diff, in the same
+// layout, with the same -focus.update instructions — but it is delivered as
+// a single fatal message, so a test that stops still shows the reader
+// everything a test that continued would have shown.
+func (g *Golden) Require(name string, actual focus.Value) bool {
+	g.t.Helper()
+
+	// The comparison reports through a TB, and the report has to survive
+	// the failure, so the messages are collected and delivered together.
+	buffer := &messageBuffer{TB: g.t}
+	ok := g.compare(buffer, name, actual)
+	if !ok {
+		g.t.Fatalf("%s", buffer.text())
+	}
+	return ok
+}
+
+// compare does the work of an assertion, reporting through tb.
+//
+// It is shared by Assert and Require so the two cannot drift apart: the
+// same comparison, the same messages, the same layout.
+func (g *Golden) compare(tb focus.TB, name string, actual focus.Value) bool {
 	path := g.Path(name)
 
 	if Update() {
 		if err := g.write(path, actual); err != nil {
-			g.t.Errorf("golden: updating %s: %v", path, err)
+			tb.Errorf("golden: updating %s: %v", path, err)
 			return false
 		}
 		return true
@@ -194,17 +225,17 @@ func (g *Golden) Assert(name string, actual focus.Value) bool {
 	want, err := LoadAs(path, g.format)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			g.t.Errorf("golden: %s does not exist yet.\n"+
+			tb.Errorf("golden: %s does not exist yet.\n"+
 				"Create it by running:\n\n    go test ./... -focus.update\n", path)
 			return false
 		}
-		g.t.Errorf("golden: reading %s: %v", path, err)
+		tb.Errorf("golden: reading %s: %v", path, err)
 		return false
 	}
 	if g.vars != nil {
 		want, err = InterpolateFixture(want, g.vars)
 		if err != nil {
-			g.t.Errorf("golden: interpolating %s: %v", path, err)
+			tb.Errorf("golden: interpolating %s: %v", path, err)
 			return false
 		}
 	}
@@ -221,12 +252,51 @@ func (g *Golden) Assert(name string, actual focus.Value) bool {
 	if g.noiseSuppression {
 		opts = append(noiseSuppressionOptions(), opts...)
 	}
-	ok := focus.AssertEqualAs(g.t, typeName, want.XDR, actual, opts...)
+	ok := focus.AssertEqualAs(tb, typeName, want.XDR, actual, opts...)
 	if !ok {
-		g.t.Errorf("golden: %s is out of date.\n"+
+		tb.Errorf("golden: %s is out of date.\n"+
 			"If the change above is intended, re-record it with:\n\n    go test ./... -focus.update\n", path)
 	}
 	return ok
+}
+
+// messageBuffer collects the messages an assertion reports instead of
+// reporting them.
+//
+// It exists so that a fatal assertion can deliver its whole diagnostic as
+// one message. The diff and the command that re-records the fixture have to
+// reach the reader together: a reader who gets only the diff does not know
+// what to do about it, and a reader who gets only the remedy does not know
+// what changed.
+type messageBuffer struct {
+	focus.TB
+	messages []string
+}
+
+// Errorf records the message rather than reporting it.
+func (buf *messageBuffer) Errorf(format string, args ...any) {
+	buf.messages = append(buf.messages, fmt.Sprintf(format, args...))
+}
+
+// Fatalf records the message rather than reporting it.
+//
+// A comparison never fails fatally, so nothing should reach this; recording
+// keeps the whole diagnostic in one place if that ever changes.
+func (buf *messageBuffer) Fatalf(format string, args ...any) {
+	buf.messages = append(buf.messages, fmt.Sprintf(format, args...))
+}
+
+// text returns the collected messages, in the order they were reported and
+// with the same layout they would have had on the terminal.
+func (buf *messageBuffer) text() string {
+	var b strings.Builder
+	for _, m := range buf.messages {
+		b.WriteString(m)
+		if !strings.HasSuffix(m, "\n") {
+			b.WriteString("\n")
+		}
+	}
+	return b.String()
 }
 
 // write records a value as a golden file.

@@ -11,8 +11,13 @@ Working and tested:
 - Field assertions: source, fee, sequence, memo, operation counts and types,
   signature count, fee-bump, and the source account an individual operation
   names — including the account it falls back to when it names none
+- Fee-bump assertions: the inner transaction of a fee-bump envelope, as a
+  value a test can assert on, and a check that runs against it
+  (`AssertFeeBumpInner`, `InnerEnvelope`)
 - Time- and ledger-bound assertions, comparing the window a precondition sets
-  against the window a test expects
+  against the window a test expects, plus the length of that window, the
+  assertion that a transaction declares no time bounds at all, and the
+  matching assertions named `AssertTimeBounds` and `AssertLedgerBounds`
 - Memo assertions by value: text, ID, 32-byte hash and return memos, each in
   the form the caller already holds it, plus the assertion that there is none
 - Operation-sequence assertions, matching the exact ordered operation types
@@ -78,6 +83,10 @@ Working and tested:
 - `require` mirrors with `Fatalf` semantics, with 100% parity enforced by an
   AST audit (`pkg/focus/require/audit.go`)
 - Golden files in reviewable JSON, with `-focus.update`
+- Fatal golden assertions: `golden.Golden.Require` and the
+  `pkg/golden/require` package stop the test at the first mismatch, with the
+  same diagnostic `Assert` reports — the diff and the command that
+  re-records the fixture
 - Golden comparisons that normalize volatile sequence and time fields by
   default, with an opt-out, plus a benchmark of the structural comparison path
 - Fixtures in JSON, YAML or plain text — chosen by file extension, or with
@@ -88,6 +97,10 @@ Working and tested:
   export to Go fuzz seed corpora
 - `focus capture` and `focus verify` against a live network, from a Soroban
   RPC endpoint or from Horizon, chosen with `--source`
+- A machine-readable `focus verify`: `--format json` prints one JSON document
+  with the counts, the status of every fixture and the paths that changed, so
+  a pipeline can post a pull-request comment or a step summary without
+  parsing terminal text. The exit status is the same in either format
 - An embedded fuzz corpus of the repository's captured mainnet XDR, for
   downstream projects that want to fuzz their own decoders (`pkg/fuzz`)
 - Unified CLI configuration: flags, `FOCUS_*` environment variables and a

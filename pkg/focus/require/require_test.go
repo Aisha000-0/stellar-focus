@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stellar/go-stellar-sdk/xdr"
 
@@ -114,6 +115,10 @@ func TestEveryMirrorReportsFatally(t *testing.T) {
 		{"ThresholdsEqual", func(tb *faketb.TB) { require.ThresholdsEqual(tb, "bad", "G", focus.Thresholds{}) }},
 		{"TimeboundsValid", func(tb *faketb.TB) { require.TimeboundsValid(tb, env, 1, 2) }},
 		{"LedgerboundsValid", func(tb *faketb.TB) { require.LedgerboundsValid(tb, env, 1, 0) }},
+		{"TimeBounds", func(tb *faketb.TB) { require.TimeBounds(tb, env, 1, 2) }},
+		{"TimeBoundsWindow", func(tb *faketb.TB) { require.TimeBoundsWindow(tb, env, time.Minute) }},
+		{"NoTimeBounds", func(tb *faketb.TB) { require.NoTimeBounds(tb, "bad") }},
+		{"LedgerBounds", func(tb *faketb.TB) { require.LedgerBounds(tb, env, 1, 0) }},
 		{"MemoTextEqual", func(tb *faketb.TB) { require.MemoTextEqual(tb, env, "nope") }},
 		{"MemoIDEqual", func(tb *faketb.TB) { require.MemoIDEqual(tb, env, 7) }},
 		{"MemoHashEqual", func(tb *faketb.TB) { require.MemoHashEqual(tb, env, "00") }},
@@ -142,6 +147,9 @@ func TestEveryMirrorReportsFatally(t *testing.T) {
 		{"NoMemo", func(tb *faketb.TB) { require.NoMemo(tb, "bad") }},
 		{"OperationSourceAccount", func(tb *faketb.TB) {
 			require.OperationSourceAccount(tb, env, 0, "GWRONG")
+		}},
+		{"FeeBumpInner", func(tb *faketb.TB) {
+			require.FeeBumpInner(tb, "bad", func(focus.Value) bool { return false })
 		}},
 	}
 
@@ -178,6 +186,9 @@ func TestMirrorsStaySilentOnSuccess(t *testing.T) {
 	require.OperationTypes(tb, env, "payment")
 	require.OperationSequence(tb, env, []xdr.OperationType{xdr.OperationTypePayment})
 	require.TimeboundsValid(tb, env, 0, 0)
+	require.TimeBounds(tb, env, 0, 0)
+	require.NoTimeBounds(tb, env)
+	require.LedgerBounds(tb, env, 0, 0)
 
 	if tb.Failed() {
 		t.Errorf("a passing assertion reported a failure:\n%s", tb.Output())

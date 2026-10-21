@@ -80,6 +80,36 @@ func TestBuildPayment(t *testing.T) {
 Every assertion accepts XDR in whatever form your code produced it — a base64
 string, raw `[]byte`, any `xdr.*` value, or an already-decoded `*lens.Value`.
 
+### Preconditions
+
+A transaction can promise the network a window in which it is valid. The
+assertions read that promise out of the envelope — from the V1
+preconditions or from the older V0 field — and check it:
+
+```go
+focus.AssertTimeBounds(t, envelope, minTime, maxTime)   // exactly these bounds
+focus.AssertTimeBoundsWindow(t, envelope, 5*time.Minute) // a window this long
+focus.AssertNoTimeBounds(t, envelope)                    // never expires
+focus.AssertLedgerBounds(t, envelope, minLedger, maxLedger)
+```
+
+A bound of zero means "unbounded", the protocol's own convention, so `0, 0`
+asserts that the transaction declares no bounds at all. The bounds are shown
+both as the seconds the protocol stores and as the UTC dates a person reads:
+
+```
+    submit_test.go:44: AssertTimeBounds: time bounds differ
+
+      got   valid from 2025-10-09T12:26:40Z until 2025-10-09T12:31:40Z
+      want  no time bounds (valid indefinitely)
+
+      min time is 0 (unbounded)
+      max time is 0 (unbounded)
+```
+
+A fee-bump envelope is read through to the inner transaction, since that is
+the one whose validity the protocol checks.
+
 ### Results, in plain English
 
 ```go
@@ -203,6 +233,28 @@ A Stellar signature carries a four-byte hint rather than a public key, so a
 signature is attributed to a signer by the hint the protocol derives from that
 signer's key — the last four bytes of it.
 
+### Fee bumps
+
+A fee-bump envelope wraps an inner transaction in an outer fee payer and a fee
+bid. The field assertions read through the wrapper — the source account, the
+memo and the operations are the inner transaction's, because that is the
+transaction the protocol executes — and `AssertFeeBump` says which it is:
+
+```go
+focus.AssertFeeBump(t, envelope, true)
+```
+
+When a check has to be made on the inner transaction itself, the inner
+transaction can be asked for:
+
+```go
+inner, ok := focus.InnerEnvelope(t, envelope)
+
+focus.AssertFeeBumpInner(t, envelope, func(inner focus.Value) bool {
+	return focus.AssertOperationTypes(t, inner, "payment")
+})
+```
+
 ### Ignoring what legitimately varies
 
 Without this, the library is unusable on real suites: a rebuilt transaction
@@ -258,7 +310,8 @@ import "github.com/stellar-optics/stellar-focus/pkg/focus/require"
 require.EnvelopeEqual(t, want, got)   // stops the test; same message
 ```
 
-Same split, same naming as testify's `assert` and `require`.
+Same split, same naming as testify's `assert` and `require`. The golden files
+have their own mirror, [`pkg/golden/require`](#fatal-golden-assertions).
 
 ### Assertions never panic
 
@@ -315,6 +368,33 @@ A golden test nobody can review is a golden test nobody updates carefully.
 The flag is namespaced `-focus.update` so it never collides with your own
 `-update`.
 
+### Fatal golden assertions
+
+`Assert` reports a failure and lets the test continue, which is what you
+want in a table test that should report every problem in one run. When
+everything after the comparison would be meaningless without it, use
+`Require` instead:
+
+```go
+g := golden.New(t, golden.WithType("TransactionEnvelope"))
+g.Require("payment", BuildPayment(dest, "100"))
+```
+
+It reports the same diagnostic — the same diff, in the same layout, with the
+same `-focus.update` instructions — and then stops the test. The package
+form does the same in one call:
+
+```go
+import "github.com/stellar-optics/stellar-focus/pkg/golden/require"
+
+require.Assert(t, "payment", BuildPayment(dest, "100"))
+```
+
+```go
+g := require.New(t, golden.WithType("TransactionEnvelope"))
+g.Assert("payment", BuildPayment(dest, "100"))
+```
+
 ## Capture
 
 ```sh
@@ -342,6 +422,54 @@ hand-written fixture is reported as skipped rather than quietly passing a
 check it was never eligible for.
 
 Defaults to **testnet**; use `--network mainnet` or `--rpc-url`.
+
+### Verifying in a pipeline
+
+The report above is written for a person. A pipeline wants a document it can
+read, so `--format json` prints one:
+
+```sh
+focus verify testdata/ --format json
+```
+
+```json
+{
+  "total": 3,
+  "matched": 1,
+  "drifted": 1,
+  "skipped": 1,
+  "errored": 0,
+  "results": [
+    {
+      "path": "testdata/envelope.golden.json",
+      "status": "matched",
+      "type": "TransactionEnvelope"
+    },
+    {
+      "path": "testdata/result.golden.json",
+      "status": "drifted",
+      "type": "TransactionResult",
+      "diff_count": 2,
+      "diff_paths": ["V1.Tx.Operations[0].Body.PaymentOp.Amount"]
+    },
+    {
+      "path": "testdata/handwritten.golden.json",
+      "status": "skipped",
+      "type": "TransactionEnvelope",
+      "error": "no capture provenance, so there is nothing to re-fetch"
+    }
+  ]
+}
+```
+
+Nothing else is printed: the progress lines and the rendered diff are for the
+terminal, and the document carries the same information in a form a script can
+use — the counts, the status of each fixture, and the paths that changed.
+
+The exit status is the same in either format — `2` on drift, `1` when a
+fixture could not be checked, `0` otherwise — so a pipeline can branch on the
+exit code and read the document for the detail, or branch on the document
+alone.
 
 ### Linting fixtures
 
