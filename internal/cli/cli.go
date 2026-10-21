@@ -119,12 +119,12 @@ precedence.`,
 	cfg.bindRootFlags(root)
 
 	root.AddCommand(
-		newCaptureCmd(cfg, stdout, stderr),
+		newCaptureCmd(cfg, stdout),
 		newLedgerKeyCmd(stdout),
 		newVerifyCmd(cfg, stdout, stderr),
-		newRefreshCmd(cfg, stdout, stderr),
+		newRefreshCmd(stdout, stderr),
 		newVersionCmd(stdout),
-		newLintCmd(cfg, stdout, stderr),
+		newLintCmd(stdout, stderr),
 	)
 	return root
 }
@@ -170,7 +170,7 @@ func newLedgerKeyCmd(stdout io.Writer) *cobra.Command {
 	return cmd
 }
 
-func newCaptureCmd(cfg *config, stdout, stderr io.Writer) *cobra.Command {
+func newCaptureCmd(cfg *config, stdout io.Writer) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "capture",
 		Short: "Record real chain data as fixture files",
@@ -254,7 +254,7 @@ archive holds envelopes and results but not transaction meta.`,
 // The check is static: no network, no chain, no test run. A fixture that
 // was hand-edited, or merged badly, should be caught while it is being
 // written rather than when a test fails weeks later.
-func newLintCmd(cfg *config, stdout, stderr io.Writer) *cobra.Command {
+func newLintCmd(stdout, stderr io.Writer) *cobra.Command {
 	return &cobra.Command{
 		Use:   "lint [paths...]",
 		Short: "Check golden fixtures for corruption",
@@ -417,7 +417,7 @@ func fixtureLedger(f *golden.Fixture) uint32 {
 // reads. When the formatter improves, that tree goes stale, and the only way
 // to fix it today is to re-record every fixture — which re-records the data
 // too. This command re-renders the tree and leaves the data alone.
-func newRefreshCmd(cfg *config, stdout, stderr io.Writer) *cobra.Command {
+func newRefreshCmd(stdout, stderr io.Writer) *cobra.Command {
 	var dryRun bool
 
 	cmd := &cobra.Command{

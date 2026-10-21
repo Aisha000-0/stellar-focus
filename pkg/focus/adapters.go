@@ -156,16 +156,12 @@ func Match(description string, assertion func(TB, Value) bool) Matcher {
 
 // MatchSucceeded is a matcher for a transaction result that reports success.
 func MatchSucceeded() Matcher {
-	return Match("a successful transaction", func(t TB, v Value) bool {
-		return AssertSucceeded(t, v)
-	})
+	return Match("a successful transaction", AssertSucceeded)
 }
 
 // MatchFailed is a matcher for a transaction result that reports failure.
 func MatchFailed() Matcher {
-	return Match("a failed transaction", func(t TB, v Value) bool {
-		return AssertFailed(t, v)
-	})
+	return Match("a failed transaction", AssertFailed)
 }
 
 // MatchResultCode is a matcher for a transaction-level result code such as

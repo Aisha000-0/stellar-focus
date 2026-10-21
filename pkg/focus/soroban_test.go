@@ -55,7 +55,7 @@ func errorResponse(t *testing.T, value xdr.ScVal) rpcproto.GetTransactionRespons
 		TransactionDetails: rpcproto.TransactionDetails{
 			Status:              "FAILED",
 			ResultXDR:           fixture(t, "tx_failed.res"),
-			DiagnosticEventsXDR: []string{mustMarshal(t, errorEvent(value, false))},
+			DiagnosticEventsXDR: []string{mustMarshal(t, errorEvent(value))},
 		},
 	}
 }
@@ -71,11 +71,11 @@ func TestAssertContractErrorPasses(t *testing.T) {
 
 	trappedMeta := diagnosticMeta(t, pinChanges(t, testDiagnosticLedger),
 		fnCall("transfer", false),
-		errorEvent(hostErrorVal(4), false))
+		errorEvent(hostErrorVal(4)))
 
 	trappedStorageMeta := diagnosticMeta(t, pinChanges(t, testDiagnosticLedger),
 		fnCall("withdraw", false),
-		errorEvent(storageErrorVal(), false))
+		errorEvent(storageErrorVal()))
 
 	response := errorResponse(t, hostErrorVal(4))
 
@@ -118,7 +118,7 @@ func TestAssertContractErrorPasses(t *testing.T) {
 		{
 			name: "contract error in a version 4 meta's diagnostics",
 			value: diagnosticMetaV4(t, pinChanges(t, testDiagnosticLedger),
-				errorEvent(hostErrorVal(4), false)),
+				errorEvent(hostErrorVal(4))),
 			want: xdr.ScErrorTypeSceContract,
 			code: 4,
 		},
@@ -178,7 +178,7 @@ func TestAssertContractErrorFailureMessages(t *testing.T) {
 
 	contractError := errorReturnMeta(t, hostErrorVal(101))
 	trappedMeta := diagnosticMeta(t, pinChanges(t, testDiagnosticLedger),
-		errorEvent(hostErrorVal(4), false))
+		errorEvent(hostErrorVal(4)))
 
 	noError := diagnosticMeta(t, pinChanges(t, testDiagnosticLedger), fnCall("transfer", false))
 

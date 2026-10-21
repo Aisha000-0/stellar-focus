@@ -240,7 +240,7 @@ func base64Encode(b []byte) string {
 
 // indent prefixes every line, so a multi-line diff nests cleanly under the
 // go test file:line prefix instead of running back to column zero.
-func indent(s, prefix string) string {
+func indent(s string) string {
 	if s == "" {
 		return s
 	}
@@ -249,7 +249,7 @@ func indent(s, prefix string) string {
 		if l == "" {
 			continue
 		}
-		lines[i] = prefix + l
+		lines[i] = "  " + l
 	}
 	return strings.Join(lines, "\n")
 }

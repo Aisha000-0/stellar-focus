@@ -157,7 +157,7 @@ func assertTimeBounds(t TB, assertion string, envelope Value, minTime, maxTime i
 	fmt.Fprintf(&b, "  want  %s\n\n", describeTimebounds(timebounds{
 		MinTime: minTime, MaxTime: maxTime, Set: minTime != 0 || maxTime != 0,
 	}))
-	b.WriteString(indent(strings.Join(timeboundDiffLines(got, minTime, maxTime), "\n"), "  "))
+	b.WriteString(indent(strings.Join(timeboundDiffLines(got, minTime, maxTime), "\n")))
 	t.Errorf("%s", b.String())
 	return false
 }
@@ -208,7 +208,7 @@ func assertLedgerBounds(t TB, assertion string, envelope Value, minLedger, maxLe
 	fmt.Fprintf(&b, "  want  %s\n\n", describeLedgerbounds(ledgerbounds{
 		MinLedger: minLedger, MaxLedger: maxLedger, Set: minLedger != 0 || maxLedger != 0,
 	}))
-	b.WriteString(indent(strings.Join(ledgerboundDiffLines(got, minLedger, maxLedger), "\n"), "  "))
+	b.WriteString(indent(strings.Join(ledgerboundDiffLines(got, minLedger, maxLedger), "\n")))
 	t.Errorf("%s", b.String())
 	return false
 }

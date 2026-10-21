@@ -10,6 +10,7 @@ import (
 )
 
 const (
+	capturedHash         = "abc123"
 	testnetPassphrase    = "Test SDF Network ; September 2015"
 	standalonePassphrase = "Standalone Network ; February 2017"
 )
@@ -18,9 +19,9 @@ const (
 // source such as Horizon that does not report a passphrase.
 type silentSource struct{ capture.Source }
 
-func captureOne(t *testing.T, src capture.Source, hash string) []capture.Record {
+func captureOne(t *testing.T, src capture.Source) []capture.Record {
 	t.Helper()
-	records, err := src.Transaction(context.Background(), hash)
+	records, err := src.Transaction(context.Background(), capturedHash)
 	if err != nil {
 		t.Fatalf("Transaction() error = %v", err)
 	}
@@ -30,10 +31,10 @@ func captureOne(t *testing.T, src capture.Source, hash string) []capture.Record 
 func TestCaptureFallsBackToTheKnownNetworkPassphrase(t *testing.T) {
 	t.Parallel()
 
-	const hash = "abc123"
+	const hash = capturedHash
 	src := silentSource{sourceWithTransaction(t, hash)}
 
-	fixtures, err := capture.Capture(context.Background(), src, captureOne(t, src, hash), capturedAt)
+	fixtures, err := capture.Capture(context.Background(), src, captureOne(t, src), capturedAt)
 	if err != nil {
 		t.Fatalf("Capture() error = %v", err)
 	}
@@ -51,12 +52,12 @@ func TestCaptureFallsBackToTheKnownNetworkPassphrase(t *testing.T) {
 func TestCaptureLeavesAnUnknownNetworkPassphraseEmpty(t *testing.T) {
 	t.Parallel()
 
-	const hash = "abc123"
+	const hash = capturedHash
 	fake := fakesource.New("standalone", "http://localhost:8000/rpc")
 	fake.Transactions = sourceWithTransaction(t, hash).Transactions
 	src := silentSource{fake}
 
-	fixtures, err := capture.Capture(context.Background(), src, captureOne(t, src, hash), capturedAt)
+	fixtures, err := capture.Capture(context.Background(), src, captureOne(t, src), capturedAt)
 	if err != nil {
 		t.Fatalf("Capture() error = %v", err)
 	}
@@ -68,12 +69,12 @@ func TestCaptureLeavesAnUnknownNetworkPassphraseEmpty(t *testing.T) {
 func TestWithPassphraseStampsAnExplicitPassphrase(t *testing.T) {
 	t.Parallel()
 
-	const hash = "abc123"
+	const hash = capturedHash
 	fake := fakesource.New("standalone", "http://localhost:8000/rpc")
 	fake.Transactions = sourceWithTransaction(t, hash).Transactions
 	src := capture.WithPassphrase(silentSource{fake}, standalonePassphrase)
 
-	fixtures, err := capture.Capture(context.Background(), src, captureOne(t, src, hash), capturedAt)
+	fixtures, err := capture.Capture(context.Background(), src, captureOne(t, src), capturedAt)
 	if err != nil {
 		t.Fatalf("Capture() error = %v", err)
 	}
@@ -96,12 +97,12 @@ func TestWithPassphraseStampsAnExplicitPassphrase(t *testing.T) {
 func TestWithPassphraseRejectsAPassphraseTheSourceContradicts(t *testing.T) {
 	t.Parallel()
 
-	const hash = "abc123"
+	const hash = capturedHash
 	fake := sourceWithTransaction(t, hash)
 	fake.Passphrase = testnetPassphrase
 	src := capture.WithPassphrase(fake, standalonePassphrase)
 
-	_, err := capture.Capture(context.Background(), src, captureOne(t, src, hash), capturedAt)
+	_, err := capture.Capture(context.Background(), src, captureOne(t, src), capturedAt)
 	if err == nil {
 		t.Fatal("Capture() succeeded with a passphrase the network contradicts")
 	}

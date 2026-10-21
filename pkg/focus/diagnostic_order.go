@@ -179,7 +179,7 @@ func AssertDiagnosticEventOrder(t TB, meta Value, want []DiagnosticEventMatch) b
 		if found < 0 {
 			t.Errorf("%s: %s\n\n%s", assertion,
 				describeDiagnosticOrderFailure(i, want, pos, events),
-				indent(describeDiagnosticStream(events), "  "))
+				indent(describeDiagnosticStream(events)))
 			return false
 		}
 		pos = found + 1
@@ -241,8 +241,8 @@ func AssertDiagnosticEventTimeline(t TB, meta Value, want DiagnosticTimeline) bo
 	if got := pins[len(pins)-1]; got != want.Ledger {
 		t.Errorf("%s: the transaction was applied in ledger %d, want %s\n\n%s\n\n%s",
 			assertion, got, describeTimeline(want),
-			indent(describeLedgerPins(pins), "  "),
-			indent(describeDiagnosticStream(events), "  "))
+			indent(describeLedgerPins(pins)),
+			indent(describeDiagnosticStream(events)))
 		return false
 	}
 	return true

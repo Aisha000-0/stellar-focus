@@ -20,7 +20,7 @@ import (
 func TestFieldAssertionsPass(t *testing.T) {
 	t.Parallel()
 
-	env := buildEnvelopeSeq(t, 4242, paymentOp(t, 100_0000000), creditPaymentOp(t, "USDC", 5))
+	env := buildEnvelopeSeq(t, 4242, paymentOp(t, 100_0000000), creditPaymentOp(t, 5))
 
 	tests := []struct {
 		name string
@@ -54,7 +54,7 @@ func TestFieldAssertionsPass(t *testing.T) {
 func TestFieldAssertionMessages(t *testing.T) {
 	t.Parallel()
 
-	env := buildEnvelopeSeq(t, 7, paymentOp(t, 100), creditPaymentOp(t, "USDC", 5))
+	env := buildEnvelopeSeq(t, 7, paymentOp(t, 100), creditPaymentOp(t, 5))
 
 	tests := []struct {
 		name     string
@@ -719,16 +719,16 @@ func TestContractSpec(t *testing.T) {
 
 // specWasm builds a WASM module carrying a contract specification in a
 // custom section, the way a compiled contract does.
-func specWasm(t testing.TB, entries []xdr.ScSpecEntry) []byte {
-	t.Helper()
+func specWasm(tb testing.TB, entries []xdr.ScSpecEntry) []byte {
+	tb.Helper()
 
 	var payload bytes.Buffer
 	if err := binary.Write(&payload, binary.BigEndian, uint32(len(entries))); err != nil {
-		t.Fatalf("writing the specification count: %v", err)
+		tb.Fatalf("writing the specification count: %v", err)
 	}
 	for _, entry := range entries {
 		if _, err := xdr.Marshal(&payload, entry); err != nil {
-			t.Fatalf("writing a specification entry: %v", err)
+			tb.Fatalf("writing a specification entry: %v", err)
 		}
 	}
 
