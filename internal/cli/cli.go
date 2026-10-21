@@ -64,8 +64,14 @@ func openSource(cfg *config) (capture.Source, error) {
 var now = time.Now
 
 // Execute builds and runs the root command.
-func Execute(args []string, stdout, stderr io.Writer) error {
+//
+// extra commands are added to the root before execution: cmd/focus passes
+// `focus assert` (cmd/focus/interactive.go), which keeps the interactive
+// assertion generator beside main without moving fixtures — capture and
+// verify — out of this package.
+func Execute(args []string, stdout, stderr io.Writer, extra ...*cobra.Command) error {
 	root := newRootCmd(stdout, stderr)
+	root.AddCommand(extra...)
 	root.SetArgs(args)
 	return root.Execute()
 }
