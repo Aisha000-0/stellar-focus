@@ -819,6 +819,8 @@ func TestAssertionsNeverPanic(t *testing.T) {
 		focus.AssertOperationType(tb, v, 0, "payment")
 		focus.AssertSignatureCount(tb, v, 0)
 		focus.AssertFeeBump(tb, v, false)
+		focus.AssertFeeBumpInner(tb, v, func(focus.Value) bool { return true })
+		focus.InnerEnvelope(tb, v)
 		focus.AssertSucceeded(tb, v)
 		focus.AssertFailed(tb, v)
 		focus.AssertResultCode(tb, v, "tx_failed")

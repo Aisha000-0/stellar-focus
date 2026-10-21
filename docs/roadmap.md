@@ -11,6 +11,9 @@ Working and tested:
 - Field assertions: source, fee, sequence, memo, operation counts and types,
   signature count, fee-bump, and the source account an individual operation
   names — including the account it falls back to when it names none
+- Fee-bump assertions: the inner transaction of a fee-bump envelope, as a
+  value a test can assert on, and a check that runs against it
+  (`AssertFeeBumpInner`, `InnerEnvelope`)
 - Time- and ledger-bound assertions, comparing the window a precondition sets
   against the window a test expects, plus the length of that window, the
   assertion that a transaction declares no time bounds at all, and the

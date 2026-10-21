@@ -431,6 +431,12 @@ func FeeBump(t focus.TB, envelope focus.Value, want bool) {
 	focus.AssertFeeBump(fatal(t), envelope, want)
 }
 
+// FeeBumpInner is focus.AssertFeeBumpInner, stopping the test on failure.
+func FeeBumpInner(t focus.TB, envelope focus.Value, innerCheck func(inner focus.Value) bool) {
+	t.Helper()
+	focus.AssertFeeBumpInner(fatal(t), envelope, innerCheck)
+}
+
 // NoEvents is focus.AssertNoEvents, stopping the test on failure.
 func NoEvents(t focus.TB, meta focus.Value) {
 	t.Helper()

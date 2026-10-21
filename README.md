@@ -233,6 +233,28 @@ A Stellar signature carries a four-byte hint rather than a public key, so a
 signature is attributed to a signer by the hint the protocol derives from that
 signer's key — the last four bytes of it.
 
+### Fee bumps
+
+A fee-bump envelope wraps an inner transaction in an outer fee payer and a fee
+bid. The field assertions read through the wrapper — the source account, the
+memo and the operations are the inner transaction's, because that is the
+transaction the protocol executes — and `AssertFeeBump` says which it is:
+
+```go
+focus.AssertFeeBump(t, envelope, true)
+```
+
+When a check has to be made on the inner transaction itself, the inner
+transaction can be asked for:
+
+```go
+inner, ok := focus.InnerEnvelope(t, envelope)
+
+focus.AssertFeeBumpInner(t, envelope, func(inner focus.Value) bool {
+	return focus.AssertOperationTypes(t, inner, "payment")
+})
+```
+
 ### Ignoring what legitimately varies
 
 Without this, the library is unusable on real suites: a rebuilt transaction

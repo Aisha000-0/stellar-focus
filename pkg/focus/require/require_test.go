@@ -148,6 +148,9 @@ func TestEveryMirrorReportsFatally(t *testing.T) {
 		{"OperationSourceAccount", func(tb *faketb.TB) {
 			require.OperationSourceAccount(tb, env, 0, "GWRONG")
 		}},
+		{"FeeBumpInner", func(tb *faketb.TB) {
+			require.FeeBumpInner(tb, "bad", func(focus.Value) bool { return false })
+		}},
 	}
 
 	for _, tc := range tests {
