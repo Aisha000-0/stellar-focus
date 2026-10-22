@@ -11,6 +11,7 @@
 //	focus capture tx <hash>          record a transaction as fixtures
 //	focus capture ledger-entry <key> record a ledger entry
 //	focus verify [paths...]          re-check stored fixtures against the chain
+//	focus assert <tx-xdr>            interactively generate assertions for a transaction
 //
 // See https://github.com/stellar-optics/stellar-focus for full documentation.
 package main
@@ -23,7 +24,10 @@ import (
 )
 
 func main() {
-	err := cli.Execute(os.Args[1:], os.Stdout, os.Stderr)
+	// `focus assert` is assembled here in interactive.go and registered with
+	// the root command, so the interactive generator lives beside main while
+	// internal/cli stays about fixtures.
+	err := cli.Execute(os.Args[1:], os.Stdout, os.Stderr, newAssertCmd())
 	code, printable := cli.ExitCode(err)
 	if printable && err != nil {
 		fmt.Fprintln(os.Stderr, "focus:", err)

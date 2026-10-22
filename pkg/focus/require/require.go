@@ -11,6 +11,8 @@
 package require
 
 import (
+	"time"
+
 	"github.com/stellar/go-stellar-sdk/xdr"
 
 	"github.com/stellar-optics/stellar-focus/pkg/focus"
@@ -42,6 +44,13 @@ func EnvelopeEqual(t focus.TB, want, got focus.Value, opts ...focus.Option) {
 	focus.AssertEnvelopeEqual(fatal(t), want, got, opts...)
 }
 
+// EnvelopeEqualUnordered is focus.AssertEnvelopeEqualUnordered, stopping the
+// test on failure.
+func EnvelopeEqualUnordered(t focus.TB, want, got focus.Value, opts ...focus.Option) {
+	t.Helper()
+	focus.AssertEnvelopeEqualUnordered(fatal(t), want, got, opts...)
+}
+
 // ResultEqual is focus.AssertResultEqual, stopping the test on failure.
 func ResultEqual(t focus.TB, want, got focus.Value, opts ...focus.Option) {
 	t.Helper()
@@ -66,10 +75,16 @@ func EqualAs(t focus.TB, typeName string, want, got focus.Value, opts ...focus.O
 	focus.AssertEqualAs(fatal(t), typeName, want, got, opts...)
 }
 
-// SourceAccount is focus.AssertSourceAccount, stopping the test on failure.
-func SourceAccount(t focus.TB, envelope focus.Value, want string) {
+// XDRRoundTrip is focus.AssertXDRRoundTrip, stopping the test on failure.
+func XDRRoundTrip(t focus.TB, value focus.Value, typeName string) {
 	t.Helper()
-	focus.AssertSourceAccount(fatal(t), envelope, want)
+	focus.AssertXDRRoundTrip(fatal(t), value, typeName)
+}
+
+// SourceAccount is focus.AssertSourceAccount, stopping the test on failure.
+func SourceAccount(t focus.TB, envelope focus.Value, want string, opts ...focus.Option) {
+	t.Helper()
+	focus.AssertSourceAccount(fatal(t), envelope, want, opts...)
 }
 
 // Fee is focus.AssertFee, stopping the test on failure.
@@ -79,9 +94,9 @@ func Fee(t focus.TB, envelope focus.Value, want int64) {
 }
 
 // Sequence is focus.AssertSequence, stopping the test on failure.
-func Sequence(t focus.TB, envelope focus.Value, want int64) {
+func Sequence(t focus.TB, envelope focus.Value, want int64, opts ...focus.Option) {
 	t.Helper()
-	focus.AssertSequence(fatal(t), envelope, want)
+	focus.AssertSequence(fatal(t), envelope, want, opts...)
 }
 
 // TimeboundsValid is focus.AssertTimeboundsValid, stopping the test on
@@ -91,6 +106,25 @@ func TimeboundsValid(t focus.TB, envelope focus.Value, minTime, maxTime int64) {
 	focus.AssertTimeboundsValid(fatal(t), envelope, minTime, maxTime)
 }
 
+// TimeBounds is focus.AssertTimeBounds, stopping the test on failure.
+func TimeBounds(t focus.TB, envelope focus.Value, wantMinTime, wantMaxTime int64) {
+	t.Helper()
+	focus.AssertTimeBounds(fatal(t), envelope, wantMinTime, wantMaxTime)
+}
+
+// TimeBoundsWindow is focus.AssertTimeBoundsWindow, stopping the test on
+// failure.
+func TimeBoundsWindow(t focus.TB, envelope focus.Value, wantDuration time.Duration) {
+	t.Helper()
+	focus.AssertTimeBoundsWindow(fatal(t), envelope, wantDuration)
+}
+
+// NoTimeBounds is focus.AssertNoTimeBounds, stopping the test on failure.
+func NoTimeBounds(t focus.TB, envelope focus.Value) {
+	t.Helper()
+	focus.AssertNoTimeBounds(fatal(t), envelope)
+}
+
 // LedgerboundsValid is focus.AssertLedgerboundsValid, stopping the test on
 // failure.
 func LedgerboundsValid(t focus.TB, envelope focus.Value, minLedger, maxLedger uint32) {
@@ -98,22 +132,28 @@ func LedgerboundsValid(t focus.TB, envelope focus.Value, minLedger, maxLedger ui
 	focus.AssertLedgerboundsValid(fatal(t), envelope, minLedger, maxLedger)
 }
 
-// Memo is focus.AssertMemo, stopping the test on failure.
-func Memo(t focus.TB, envelope focus.Value, want string) {
+// LedgerBounds is focus.AssertLedgerBounds, stopping the test on failure.
+func LedgerBounds(t focus.TB, envelope focus.Value, wantMinLedger, wantMaxLedger uint32) {
 	t.Helper()
-	focus.AssertMemo(fatal(t), envelope, want)
+	focus.AssertLedgerBounds(fatal(t), envelope, wantMinLedger, wantMaxLedger)
+}
+
+// Memo is focus.AssertMemo, stopping the test on failure.
+func Memo(t focus.TB, envelope focus.Value, want string, opts ...focus.Option) {
+	t.Helper()
+	focus.AssertMemo(fatal(t), envelope, want, opts...)
 }
 
 // MemoTextEqual is focus.AssertMemoTextEqual, stopping the test on failure.
-func MemoTextEqual(t focus.TB, envelope focus.Value, want string) {
+func MemoTextEqual(t focus.TB, envelope focus.Value, want string, opts ...focus.Option) {
 	t.Helper()
-	focus.AssertMemoTextEqual(fatal(t), envelope, want)
+	focus.AssertMemoTextEqual(fatal(t), envelope, want, opts...)
 }
 
 // MemoIDEqual is focus.AssertMemoIDEqual, stopping the test on failure.
-func MemoIDEqual(t focus.TB, envelope focus.Value, want uint64) {
+func MemoIDEqual(t focus.TB, envelope focus.Value, want uint64, opts ...focus.Option) {
 	t.Helper()
-	focus.AssertMemoIDEqual(fatal(t), envelope, want)
+	focus.AssertMemoIDEqual(fatal(t), envelope, want, opts...)
 }
 
 // MemoHashEqual is focus.AssertMemoHashEqual, stopping the test on failure.
@@ -127,6 +167,37 @@ func MemoHashEqual(t focus.TB, envelope focus.Value, want focus.Value) {
 func MemoReturnEqual(t focus.TB, envelope focus.Value, want focus.Value) {
 	t.Helper()
 	focus.AssertMemoReturnEqual(fatal(t), envelope, want)
+}
+
+// MemoText is focus.AssertMemoText, stopping the test on failure.
+func MemoText(t focus.TB, envelope focus.Value, want string, opts ...focus.Option) {
+	t.Helper()
+	focus.AssertMemoText(fatal(t), envelope, want, opts...)
+}
+
+// MemoID is focus.AssertMemoID, stopping the test on failure.
+func MemoID(t focus.TB, envelope focus.Value, want uint64, opts ...focus.Option) {
+	t.Helper()
+	focus.AssertMemoID(fatal(t), envelope, want, opts...)
+}
+
+// MemoHash is focus.AssertMemoHash, stopping the test on failure.
+func MemoHash(t focus.TB, envelope focus.Value, want [32]byte) {
+	t.Helper()
+	focus.AssertMemoHash(fatal(t), envelope, want)
+}
+
+// NoMemo is focus.AssertNoMemo, stopping the test on failure.
+func NoMemo(t focus.TB, envelope focus.Value) {
+	t.Helper()
+	focus.AssertNoMemo(fatal(t), envelope)
+}
+
+// OperationSourceAccount is focus.AssertOperationSourceAccount, stopping the
+// test on failure.
+func OperationSourceAccount(t focus.TB, envelope focus.Value, opIndex int, want string, opts ...focus.Option) {
+	t.Helper()
+	focus.AssertOperationSourceAccount(fatal(t), envelope, opIndex, want, opts...)
 }
 
 // OperationCount is focus.AssertOperationCount, stopping the test on failure.
@@ -149,9 +220,9 @@ func OperationSequence(t focus.TB, envelope focus.Value, want []xdr.OperationTyp
 }
 
 // SignatureCount is focus.AssertSignatureCount, stopping the test on failure.
-func SignatureCount(t focus.TB, envelope focus.Value, want int) {
+func SignatureCount(t focus.TB, envelope focus.Value, want int, opts ...focus.Option) {
 	t.Helper()
-	focus.AssertSignatureCount(fatal(t), envelope, want)
+	focus.AssertSignatureCount(fatal(t), envelope, want, opts...)
 }
 
 // SignaturesPresent is focus.AssertSignaturesPresent, stopping the test on
@@ -166,6 +237,18 @@ func SignaturesPresent(t focus.TB, envelope focus.Value, expectedPubKeys ...focu
 func SignatureThreshold(t focus.TB, envelope focus.Value, threshold int, expectedPubKeys ...focus.Value) {
 	t.Helper()
 	focus.AssertSignatureThreshold(fatal(t), envelope, threshold, expectedPubKeys...)
+}
+
+// SignatureHints is focus.AssertSignatureHints, stopping the test on failure.
+func SignatureHints(t focus.TB, envelope focus.Value, wantHints ...[4]byte) {
+	t.Helper()
+	focus.AssertSignatureHints(fatal(t), envelope, wantHints...)
+}
+
+// SignedBy is focus.AssertSignedBy, stopping the test on failure.
+func SignedBy(t focus.TB, envelope focus.Value, wantPublicKeys ...string) {
+	t.Helper()
+	focus.AssertSignedBy(fatal(t), envelope, wantPublicKeys...)
 }
 
 // Succeeded is focus.AssertSucceeded, stopping the test on failure.
@@ -232,6 +315,13 @@ func EventEmitted(t focus.TB, meta focus.Value, want focus.Event) {
 	focus.AssertEventEmitted(fatal(t), meta, want)
 }
 
+// DiagnosticEventEmitted is focus.AssertDiagnosticEventEmitted, stopping the
+// test on failure.
+func DiagnosticEventEmitted(t focus.TB, meta focus.Value, want focus.Event) {
+	t.Helper()
+	focus.AssertDiagnosticEventEmitted(fatal(t), meta, want)
+}
+
 // EventCount is focus.AssertEventCount, stopping the test on failure.
 func EventCount(t focus.TB, meta focus.Value, want int) {
 	t.Helper()
@@ -244,10 +334,30 @@ func ReturnValue(t focus.TB, meta focus.Value, want focus.Value) {
 	focus.AssertReturnValue(fatal(t), meta, want)
 }
 
+// ReturnValueWithSpec is focus.AssertReturnValueWithSpec, stopping the test
+// on failure.
+func ReturnValueWithSpec(t focus.TB, meta focus.Value, want focus.Value, function string, spec []xdr.ScSpecEntry) {
+	t.Helper()
+	focus.AssertReturnValueWithSpec(fatal(t), meta, want, function, spec)
+}
+
 // ContractTrapped is focus.AssertContractTrapped, stopping the test on failure.
 func ContractTrapped(t focus.TB, result focus.Value) {
 	t.Helper()
 	focus.AssertContractTrapped(fatal(t), result)
+}
+
+// ContractTrappedWith is focus.AssertContractTrappedWith, stopping the test on
+// failure.
+func ContractTrappedWith(t focus.TB, result focus.Value, want string) {
+	t.Helper()
+	focus.AssertContractTrappedWith(fatal(t), result, want)
+}
+
+// ContractError is focus.AssertContractError, stopping the test on failure.
+func ContractError(t focus.TB, metaOrResult focus.Value, wantType xdr.ScErrorType, wantCode uint32) {
+	t.Helper()
+	focus.AssertContractError(fatal(t), metaOrResult, wantType, wantCode)
 }
 
 // ConstructorState is focus.AssertConstructorState, stopping the test on
@@ -282,6 +392,12 @@ func DiagnosticEventOrder(t focus.TB, meta focus.Value, want []focus.DiagnosticE
 func DiagnosticEventTimeline(t focus.TB, meta focus.Value, want focus.DiagnosticTimeline) {
 	t.Helper()
 	focus.AssertDiagnosticEventTimeline(fatal(t), meta, want)
+}
+
+// LedgerKeyEqual is focus.AssertLedgerKeyEqual, stopping the test on failure.
+func LedgerKeyEqual(t focus.TB, want, got focus.Value) {
+	t.Helper()
+	focus.AssertLedgerKeyEqual(fatal(t), want, got)
 }
 
 // EntryCreated is focus.AssertEntryCreated, stopping the test on failure.
@@ -341,6 +457,12 @@ func FeeBump(t focus.TB, envelope focus.Value, want bool) {
 	focus.AssertFeeBump(fatal(t), envelope, want)
 }
 
+// FeeBumpInner is focus.AssertFeeBumpInner, stopping the test on failure.
+func FeeBumpInner(t focus.TB, envelope focus.Value, innerCheck func(inner focus.Value) bool) {
+	t.Helper()
+	focus.AssertFeeBumpInner(fatal(t), envelope, innerCheck)
+}
+
 // NoEvents is focus.AssertNoEvents, stopping the test on failure.
 func NoEvents(t focus.TB, meta focus.Value) {
 	t.Helper()
@@ -351,4 +473,130 @@ func NoEvents(t focus.TB, meta focus.Value) {
 func OperationType(t focus.TB, envelope focus.Value, index int, want string) {
 	t.Helper()
 	focus.AssertOperationType(fatal(t), envelope, index, want)
+}
+
+// ClawbackOp is focus.AssertClawbackOp, stopping the test on failure.
+func ClawbackOp(t focus.TB, envelope focus.Value, index int, from, asset focus.Value, amount int64) {
+	t.Helper()
+	focus.AssertClawbackOp(fatal(t), envelope, index, from, asset, amount)
+}
+
+// ClawbackClaimableBalanceOp is focus.AssertClawbackClaimableBalanceOp,
+// stopping the test on failure.
+func ClawbackClaimableBalanceOp(t focus.TB, envelope focus.Value, index int, balanceID focus.Value) {
+	t.Helper()
+	focus.AssertClawbackClaimableBalanceOp(fatal(t), envelope, index, balanceID)
+}
+
+// BalanceForfeited is focus.AssertBalanceForfeited, stopping the test on
+// failure.
+func BalanceForfeited(t focus.TB, meta, account, asset focus.Value, amount int64) {
+	t.Helper()
+	focus.AssertBalanceForfeited(fatal(t), meta, account, asset, amount)
+}
+
+// ClaimableBalanceRevoked is focus.AssertClaimableBalanceRevoked, stopping the
+// test on failure.
+func ClaimableBalanceRevoked(t focus.TB, meta, balanceID focus.Value) {
+	t.Helper()
+	focus.AssertClaimableBalanceRevoked(fatal(t), meta, balanceID)
+}
+
+// EntrySponsoredBy is focus.AssertEntrySponsoredBy, stopping the test on
+// failure.
+func EntrySponsoredBy(t focus.TB, meta, targetEntry, sponsorAccount focus.Value) {
+	t.Helper()
+	focus.AssertEntrySponsoredBy(fatal(t), meta, targetEntry, sponsorAccount)
+}
+
+// InflationPayouts is focus.AssertInflationPayouts, stopping the test on
+// failure.
+func InflationPayouts(t focus.TB, result focus.Value, want []focus.InflationPayout) {
+	t.Helper()
+	focus.AssertInflationPayouts(fatal(t), result, want)
+}
+
+// InflationPaid is focus.AssertInflationPaid, stopping the test on failure.
+func InflationPaid(t focus.TB, result, account focus.Value, amount int64) {
+	t.Helper()
+	focus.AssertInflationPaid(fatal(t), result, account, amount)
+}
+
+// FeePool is focus.AssertFeePool, stopping the test on failure.
+func FeePool(t focus.TB, header focus.Value, want int64) {
+	t.Helper()
+	focus.AssertFeePool(fatal(t), header, want)
+}
+
+// FeePoolChanged is focus.AssertFeePoolChanged, stopping the test on failure.
+func FeePoolChanged(t focus.TB, before, after focus.Value, delta int64) {
+	t.Helper()
+	focus.AssertFeePoolChanged(fatal(t), before, after, delta)
+}
+
+// ClaimableBalanceCreated is focus.AssertClaimableBalanceCreated, stopping the
+// test on failure.
+func ClaimableBalanceCreated(t focus.TB, meta, claimant focus.Value, amount int64) {
+	t.Helper()
+	focus.AssertClaimableBalanceCreated(fatal(t), meta, claimant, amount)
+}
+
+// AccountDataEqual is focus.AssertAccountDataEqual, stopping the test on
+// failure.
+func AccountDataEqual(t focus.TB, meta focus.Value, key string, value focus.Value) {
+	t.Helper()
+	focus.AssertAccountDataEqual(fatal(t), meta, key, value)
+}
+
+// AccountDataEqualFor is focus.AssertAccountDataEqualFor, stopping the test on
+// failure.
+func AccountDataEqualFor(t focus.TB, meta, account focus.Value, key string, value focus.Value) {
+	t.Helper()
+	focus.AssertAccountDataEqualFor(fatal(t), meta, account, key, value)
+}
+
+// AccountDataDeleted is focus.AssertAccountDataDeleted, stopping the test on
+// failure.
+func AccountDataDeleted(t focus.TB, meta focus.Value, key string) {
+	t.Helper()
+	focus.AssertAccountDataDeleted(fatal(t), meta, key)
+}
+
+// LiquidityPoolDeposit is focus.AssertLiquidityPoolDeposit, stopping the test
+// on failure.
+func LiquidityPoolDeposit(t focus.TB, meta, pool focus.Value, want focus.PoolChange) {
+	t.Helper()
+	focus.AssertLiquidityPoolDeposit(fatal(t), meta, pool, want)
+}
+
+// LiquidityPoolWithdrawal is focus.AssertLiquidityPoolWithdrawal, stopping the
+// test on failure.
+func LiquidityPoolWithdrawal(t focus.TB, meta, pool focus.Value, want focus.PoolChange) {
+	t.Helper()
+	focus.AssertLiquidityPoolWithdrawal(fatal(t), meta, pool, want)
+}
+
+// OfferCreated is focus.AssertOfferCreated, stopping the test on failure.
+func OfferCreated(t focus.TB, meta focus.Value, want focus.Offer) {
+	t.Helper()
+	focus.AssertOfferCreated(fatal(t), meta, want)
+}
+
+// TradeExecuted is focus.AssertTradeExecuted, stopping the test on failure.
+func TradeExecuted(t focus.TB, value focus.Value, want focus.Trade) {
+	t.Helper()
+	focus.AssertTradeExecuted(fatal(t), value, want)
+}
+
+// Snapshot is focus.AssertSnapshot, stopping the test on failure.
+func Snapshot(t focus.TB, name, got string, opts ...focus.SnapshotOption) {
+	t.Helper()
+	focus.AssertSnapshot(fatal(t), name, got, opts...)
+}
+
+// FailureSnapshot is focus.AssertFailureSnapshot, stopping the test on
+// failure.
+func FailureSnapshot(t focus.TB, name string, fn func(focus.TB), opts ...focus.SnapshotOption) {
+	t.Helper()
+	focus.AssertFailureSnapshot(fatal(t), name, fn, opts...)
 }

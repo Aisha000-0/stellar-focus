@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/stellar/go-stellar-sdk/amount"
@@ -44,6 +45,15 @@ type ledgerChange struct {
 	account string
 	// asset is the canonical trustline asset label for trustline changes.
 	asset string
+	// id is the entry's own identifier, for the entry kinds an assertion
+	// matches on something other than a whole key: a liquidity pool id in
+	// hex, an offer id in decimal, or a data entry's name.
+	//
+	// It is read from the key rather than the entry, so a removed entry —
+	// which carries only a key — is still identifiable. An entry a test
+	// always names in full, such as a claimable balance, is matched by keyID
+	// instead and needs nothing here.
+	id string
 	// entry is the entry value after (or before, for a state change) the
 	// change. It is nil for a removed entry, which carries only a key.
 	entry *xdr.LedgerEntry
@@ -94,6 +104,19 @@ func AssertEntryDeleted(t TB, meta Value, key Value) bool {
 		xdr.LedgerEntryChangeTypeLedgerEntryRemoved)
 }
 
+// AssertLedgerKeyEqual compares two ledger keys structurally.
+//
+// Both sides accept the same forms as the other assertions: an xdr.LedgerKey,
+// base64 XDR, raw bytes or a decoded *lens.Value. The failure names the field
+// of the key that differs rather than the two base64 strings.
+//
+// A key built by pkg/ledgerkey can be compared directly against one read out
+// of a transaction meta or captured fixture.
+func AssertLedgerKeyEqual(t TB, want, got Value) bool {
+	t.Helper()
+	return assertEqual(t, "AssertLedgerKeyEqual", "LedgerKey", want, got)
+}
+
 // assertEntryChange is the shared implementation behind the three ledger
 // entry assertions.
 func assertEntryChange(t TB, assertion string, meta, key Value, want xdr.LedgerEntryChangeType) bool {
@@ -115,7 +138,7 @@ func assertEntryChange(t TB, assertion string, meta, key Value, want xdr.LedgerE
 	}
 
 	t.Errorf("%s: no ledger entry was %s for %s\n\n%s",
-		assertion, changeVerb(want), wantKey.label, indent(describeChanges(changes), "  "))
+		assertion, changeVerb(want), wantKey.label, indent(describeChanges(changes)))
 	return false
 }
 
@@ -264,10 +287,16 @@ func sanitiseChange(ch xdr.LedgerEntryChange) (ledgerChange, bool) {
 	case xdr.LedgerEntryTypeOffer:
 		if k, ok := key.GetOffer(); ok {
 			out.account = k.SellerId.Address()
+			out.id = strconv.FormatInt(int64(k.OfferId), 10)
 		}
 	case xdr.LedgerEntryTypeData:
 		if k, ok := key.GetData(); ok {
 			out.account = k.AccountId.Address()
+			out.id = string(k.DataName)
+		}
+	case xdr.LedgerEntryTypeLiquidityPool:
+		if k, ok := key.GetLiquidityPool(); ok {
+			out.id = describePoolID(k.LiquidityPoolId)
 		}
 	}
 

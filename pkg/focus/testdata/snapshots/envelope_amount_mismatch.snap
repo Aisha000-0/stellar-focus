@@ -1,0 +1,8 @@
+AssertEnvelopeEqual: envelopes differ — 1 difference
+
+  ~ V1.Tx.Operations[0].Body.PaymentOp.Amount
+      want │ 1000000000 100.0000000 (stroops: 1000000000)
+      got  │ 2000000000 200.0000000 (stroops: 2000000000)
+
+want  AAAAAgAAAACS05bpJAmO8a9V…  (172 bytes base64)
+got   AAAAAgAAAACS05bpJAmO8a9V…  (172 bytes base64)
