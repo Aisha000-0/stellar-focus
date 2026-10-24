@@ -10,6 +10,8 @@ Working and tested:
   failure output that names the changed field path, plus a round-trip
   assertion that re-encodes a value and diffs the two decoded trees so a
   lossy encoder is reported by field rather than by base64
+- Executable `AssertEnvelopeEqual` godoc example and offline example tests
+  covering a matching envelope, a changed sequence number, and invalid XDR
 - Field assertions: source, fee, sequence, memo, operation counts and types,
   signature count, fee-bump, and the source account an individual operation
   names — including the account it falls back to when it names none

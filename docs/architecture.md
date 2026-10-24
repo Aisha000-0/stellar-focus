@@ -33,6 +33,7 @@ internal/faketb/      recording focus.TB — lets focus test its own messages
 internal/fakesource/  in-memory capture.Source, so the CLI tests run offline
 pkg/focus/
   focus.go            TB, Value coercion, panic guard, Encode
+  equal_example_test.go executable AssertEnvelopeEqual godoc example
   safe_exec.go        panic-safe harness: SafeExec, SafeCall, PanicError
   terminal.go         ANSI colour helpers, field highlighting, TTY detection
   snapshot.go         snapshot testing for failure messages
@@ -175,6 +176,12 @@ Taking an interface rather than `*testing.T` buys three things:
 
 `Helper()` is called by every assertion so `go test` reports the caller's
 file and line rather than a line inside this library.
+
+`pkg/focus/equal_example_test.go` runs as a Go example and appears in godoc
+under `AssertEnvelopeEqual`. It compares two in-memory XDR envelopes and checks
+that the failure names `SeqNum`. `cmd/focus/examples_test.go` exercises the
+same documented path through `internal/faketb`, including equal envelopes and
+invalid input. These examples never create a capture source or contact RPC.
 
 ## Value coercion
 
