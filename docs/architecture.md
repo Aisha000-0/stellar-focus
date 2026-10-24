@@ -95,6 +95,13 @@ and `stellar-xdr-lens`. That is enforced by `TestLibraryStaysDependencyLight`
 `pkg/focus/deps_lint_test.go` (import specs, pinpointing file and line)
 rather than left to discipline.
 
+The library packages also have a one-way dependency order:
+`pkg/focus` → `pkg/golden` → `pkg/capture` → `internal/cli`.
+`pkg/focus/decouple_test.go` checks the compiled production graph for each
+layer (including the `require` packages) with module downloads disabled. This
+keeps assertions usable without fixture, capture, or CLI dependencies; capture
+can still use golden fixtures, and golden can use focus assertions.
+
 ## CLI configuration
 
 A setting has three spellings — a flag, a `FOCUS_`-prefixed environment

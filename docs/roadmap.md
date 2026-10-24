@@ -155,6 +155,8 @@ Working and tested:
   contract that does not match the one the ledger names
   (`pkg/capture/contract_wasm.go`)
 - Dependency-light library, enforced by compiled-graph and AST tests
+- Package boundaries between focus, golden, capture, and CLI enforced by an
+  offline compiled-graph test (`pkg/focus/decouple_test.go`)
 - No assertion panics, enforced by test via a panic-safe harness
   (`SafeExec`/`SafeCall` in `pkg/focus/safe_exec.go`)
 - Colourized terminal output highlighting the mismatched field, with the
