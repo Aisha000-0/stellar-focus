@@ -32,7 +32,7 @@ func AssertPayment(t TB, envelope Value, opIndex int, wantDest string, wantAmoun
 	t.Helper()
 	const assertion = "AssertPayment"
 
-	op, _, ok := operationAt(t, assertion, envelope, opIndex)
+	op, ok := operationAt(t, assertion, envelope, opIndex)
 	if !ok {
 		return false
 	}
@@ -93,7 +93,7 @@ func AssertCreateAccount(t TB, envelope Value, opIndex int, wantDest string, wan
 	t.Helper()
 	const assertion = "AssertCreateAccount"
 
-	op, _, ok := operationAt(t, assertion, envelope, opIndex)
+	op, ok := operationAt(t, assertion, envelope, opIndex)
 	if !ok {
 		return false
 	}
@@ -140,7 +140,7 @@ func AssertChangeTrust(t TB, envelope Value, opIndex int, wantAsset string, want
 	t.Helper()
 	const assertion = "AssertChangeTrust"
 
-	op, _, ok := operationAt(t, assertion, envelope, opIndex)
+	op, ok := operationAt(t, assertion, envelope, opIndex)
 	if !ok {
 		return false
 	}

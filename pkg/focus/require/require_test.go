@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stellar/go-stellar-sdk/xdr"
 
@@ -15,7 +16,7 @@ import (
 
 func fixture(t *testing.T, name string) string {
 	t.Helper()
-	b, err := os.ReadFile(filepath.Join("..", "..", "..", "testdata", name))
+	b, err := os.ReadFile(filepath.Join("..", "..", "..", "pkg", "fuzz", "testdata", name))
 	if err != nil {
 		t.Fatalf("reading %s: %v", name, err)
 	}
@@ -120,6 +121,10 @@ func TestEveryMirrorReportsFatally(t *testing.T) {
 		{"ThresholdsEqual", func(tb *faketb.TB) { require.ThresholdsEqual(tb, "bad", "G", focus.Thresholds{}) }},
 		{"TimeboundsValid", func(tb *faketb.TB) { require.TimeboundsValid(tb, env, 1, 2) }},
 		{"LedgerboundsValid", func(tb *faketb.TB) { require.LedgerboundsValid(tb, env, 1, 0) }},
+		{"TimeBounds", func(tb *faketb.TB) { require.TimeBounds(tb, env, 1, 2) }},
+		{"TimeBoundsWindow", func(tb *faketb.TB) { require.TimeBoundsWindow(tb, env, time.Minute) }},
+		{"NoTimeBounds", func(tb *faketb.TB) { require.NoTimeBounds(tb, "bad") }},
+		{"LedgerBounds", func(tb *faketb.TB) { require.LedgerBounds(tb, env, 1, 0) }},
 		{"MemoTextEqual", func(tb *faketb.TB) { require.MemoTextEqual(tb, env, "nope") }},
 		{"MemoIDEqual", func(tb *faketb.TB) { require.MemoIDEqual(tb, env, 7) }},
 		{"MemoHashEqual", func(tb *faketb.TB) { require.MemoHashEqual(tb, env, "00") }},
@@ -132,6 +137,25 @@ func TestEveryMirrorReportsFatally(t *testing.T) {
 		}},
 		{"SignatureThreshold", func(tb *faketb.TB) {
 			require.SignatureThreshold(tb, env, 1, "GCJNHFXJEQEY54NPKU4DBMT5WOBJUHMYSFBDAQF4OMTEGJN4BQU7ZST6")
+		}},
+		{"SignatureHints", func(tb *faketb.TB) {
+			require.SignatureHints(tb, env, [4]byte{0xde, 0xad, 0xbe, 0xef})
+		}},
+		{"SignedBy", func(tb *faketb.TB) {
+			require.SignedBy(tb, env, "GCJNHFXJEQEY54NPKU4DBMT5WOBJUHMYSFBDAQF4OMTEGJN4BQU7ZST6")
+		}},
+		{"ContractError", func(tb *faketb.TB) {
+			require.ContractError(tb, "bad", xdr.ScErrorTypeSceContract, 4)
+		}},
+		{"MemoText", func(tb *faketb.TB) { require.MemoText(tb, env, "nope") }},
+		{"MemoID", func(tb *faketb.TB) { require.MemoID(tb, env, 7) }},
+		{"MemoHash", func(tb *faketb.TB) { require.MemoHash(tb, env, [32]byte{}) }},
+		{"NoMemo", func(tb *faketb.TB) { require.NoMemo(tb, "bad") }},
+		{"OperationSourceAccount", func(tb *faketb.TB) {
+			require.OperationSourceAccount(tb, env, 0, "GWRONG")
+		}},
+		{"FeeBumpInner", func(tb *faketb.TB) {
+			require.FeeBumpInner(tb, "bad", func(focus.Value) bool { return false })
 		}},
 	}
 
@@ -169,6 +193,9 @@ func TestMirrorsStaySilentOnSuccess(t *testing.T) {
 	require.OperationSequence(tb, env, []xdr.OperationType{xdr.OperationTypePayment})
 	require.TimeboundsValid(tb, env, 0, 0)
 	require.Payment(tb, env, 0, "GAPB7YMUQ6MPQ23PTFDNBZP7HGGTZPI2DT5JJURUOIXNPLGHW2O3WYXZ", 100, "native")
+	require.TimeBounds(tb, env, 0, 0)
+	require.NoTimeBounds(tb, env)
+	require.LedgerBounds(tb, env, 0, 0)
 
 	if tb.Failed() {
 		t.Errorf("a passing assertion reported a failure:\n%s", tb.Output())

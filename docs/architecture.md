@@ -44,7 +44,7 @@ pkg/focus/
   timebounds.go       time and ledger bound assertions
   memo.go             memo value assertions
   op_order.go         operation sequence assertions
-  signatures.go       signer presence and threshold assertions
+  signatures.go       signer presence, hint and threshold assertions
   results.go          transaction result-code assertions
   result_codes.go     per-operation result-code assertions
   ledger_entries.go   entry created/modified/deleted assertions
@@ -56,18 +56,27 @@ pkg/focus/
   clawback.go         clawback operations, forfeiture and revocation
   sponsorship.go      who pays an entry's reserve
   inflation.go        inflation payouts and ledger fee-pool assertions
-  soroban.go          events, return values
+  soroban.go          events, return values, contract errors
+  spec.go             contract specifications: field names, and ContractSpec
   traps.go            contract traps and the host diagnostics that explain them
   constructor.go      deployment state and owner binding (__constructor)
   diagnostic_order.go diagnostic stream order and timelines
   simulation.go       simulated resource budget assertions
   fees.go             consumed and refundable fee assertions
+  adapters.go         testify/assert and gomock-style adapters around assertions
   require/            Fatalf mirrors of everything above
   require/audit.go    AST parity audit between focus and require
 pkg/golden/           golden files, -focus.update
+pkg/fuzz/             seed corpora for downstream fuzzers
+  fuzz.go            embedded corpus: Corpus, CorpusFor, Types
+  testdata/          the captured mainnet XDR the corpus is built from
 pkg/capture/
   capture.go        Source interface, RPC impl, Verify  ← seam: new sources
   rpc.go            the Soroban RPC Source
+  horizon.go        the Horizon Source
+  file_source.go    a Source over a directory of XDR dumps, for offline use
+  archive_source.go the history archive Source, and RPC-then-archive fallback
+  sanitize.go       masking of memos, data values and secret keys at capture
   cache.go          Scraper: rate-limited fetches, .focus/cache
   bundle.go         multi-transaction capture with a manifest
   codegen.go        deterministic replay-test generation from fixtures
@@ -351,6 +360,47 @@ renderable instead of panicking. Matching is case-sensitive; a hit that
 differs only in case is called out in the failure, because that is almost
 always the mistake, and an empty diagnostic stream is reported as
 unsearchable rather than treated as a pass.
+
+## Contract specifications: the names the contract chose
+
+A Soroban payload on the wire is a map of symbol keys, and an ScVal
+discriminant says what each value is. That is enough to compare two
+payloads, and not enough to read one: the developer who wrote the contract
+knows the payload as `{from: Address, amount: u128}`, and a failure that
+says `ScMapEntry` does not tell them which field is wrong.
+
+`spec.go` reads a contract's specification — the `ScSpecEntry` list that
+names its structs, unions, enums, events and functions — and turns it into
+the names a failure message uses.
+
+**The specification is an input, not a mode.** `Event.Spec` and
+`AssertReturnValueWithSpec` take one; every other path is unchanged. A test
+that cannot supply a specification still works, and a specification never
+changes *what* matches, only how it is described. That is the rule the
+tests pin: the same matcher passes and fails the same way with and without
+one.
+
+**The specification is indexed once, per assertion.** `newSpecIndex` walks
+the entries into maps by name; an entry whose union arm is missing is
+skipped rather than fatal, because a broken specification should cost the
+names it carries, not the whole assertion. `resolveType` then turns a type
+definition into the *shape* of the value it describes — named fields, a
+sequence, or a plain value — and every comparison and every rendering goes
+through that shape. One shape, two uses: it decides how a wanted value is
+compared, and how an actual value is printed.
+
+**Both names are shown.** The contract's field names and the XDR type are
+printed together (`{from: GCJNH…ZST6, amount: u128(100)} [ScValTypeScvMap]`),
+because a reader may know one and not the other. The failure names the
+field that differs (`amount: want u128(200), got u128(100)`) rather than
+leaving the reader to compare two maps.
+
+**The specification can come from the contract itself.**
+`focus.ContractSpec(wasm)` reads the `contractspec` custom section out of a
+compiled contract, so a test that has the contract's bytes needs no second
+file. The WebAssembly binary format is walked directly rather than decoded:
+the section is the only part of the module that matters here, and a
+dependency to parse the rest of it would cost more than it saves.
 
 ## Contract deployment state
 
@@ -720,6 +770,52 @@ rule holds:
   code is addressed by the hash of its bytes, so this is free — and fails
   with `ErrContractCodeHashMismatch` instead of archiving a contract that
   does not match the one the ledger names.
+- `capture.HorizonSource` (`pkg/capture/horizon.go`) serves Horizon's REST
+  API, which reaches further back than a Soroban RPC endpoint's retention
+  window and covers every transaction type. It returns the same three
+  records per transaction — envelope, result, meta — so a fixture captured
+  from Horizon is indistinguishable from one captured from RPC. The CLI
+  chooses between them with `--source rpc|horizon`; each source has its own
+  default endpoint per network, because an RPC endpoint and a Horizon
+  endpoint are different services.
+- `capture.FileSource` (`pkg/capture/file_source.go`) replays dumps from a
+  directory — `{hash}.{envelope,result,meta}.xdr` and `{key}.entry.xdr` —
+  so a fixture can be captured or verified with no network at all. The CLI
+  selects it with `--file-source <dir>`.
+- `capture.ArchivalSource` (`pkg/capture/archive_source.go`) reads a
+  history archive's checkpoint files. An archive is not indexed by hash, so
+  it implements the optional `LedgerTransactionSource` and needs the ledger
+  a transaction closed in; `FetchTransaction` passes that hint where a
+  source can use it, and `Verify` takes it from the fixture's provenance.
+  The envelope is found by hashing each candidate with the passphrase the
+  archive records. `capture.FallbackSource` asks RPC first and the archive
+  on `ErrNotFound`; the CLI builds one when `--archive-url` is given.
+- Provenance records the network passphrase: from a source that reports it
+  (`NetworkPassphraseSource`), else from `golden.KnownPassphrases`, else
+  from `capture.WithPassphrase` (`--passphrase`). `Verify` refuses a
+  fixture whose passphrase the source contradicts.
+- `capture.Sanitizer` (`pkg/capture/sanitize.go`) rewrites records before
+  they become fixtures, masking text memos, data values and secret-key
+  shaped strings. Sanitized and anonymized fixtures are marked in their
+  provenance and are not verified against the chain.
+
+## The fuzz corpus
+
+`pkg/fuzz` hands the repository's captured XDR to a downstream fuzzer. The
+corpus lives in `pkg/fuzz/testdata`, embedded with `//go:embed`, so it is
+available wherever the module is imported and no filesystem path can be got
+wrong.
+
+The fixtures moved there rather than being copied: one corpus, one home. The
+manifest beside them says which XDR type each file holds, so `CorpusFor`
+can select by type without inferring it from a filename, and a test asserts
+that the embedded corpus and the files on disk are the same payloads — a
+corpus that drifts from its captures is worse than no corpus.
+
+One seed is built rather than captured: the chain's meta was not captured
+with the transactions, and a meta is where the interesting structures live —
+contract events and ScVal payloads. It is built deterministically, so the
+corpus does not change from run to run.
 
 ## Adding an assertion
 
@@ -740,10 +836,69 @@ Prefer building on `lens.Explain` over reaching into XDR directly: it means
 the value a test asserts on is the same value `lens explain` prints, so an
 assertion and a manual investigation can never disagree.
 
+## Assertion adapters
+
+`pkg/focus/adapters.go` lets focus assertions be reported by ecosystems that
+do not take a `TB`, without any of them entering this repository's
+dependency graph — the compiled-graph and AST tests fail the build if
+testify or gomock appears in `pkg/focus`'s imports, test files included.
+
+Two shapes are provided:
+
+- **Errors.** `focus.Check` runs any assertion against a private recording
+  TB and returns its failure text as an error; `ErrSucceeded`, `ErrResultCode`
+  and the rest of the `results.go` set are shorthand around the corresponding
+  assertions. testify's `assert.NoError(t, err)` and gocheck's
+  `assert(c, IsNil, err)` then print the same descriptive diff a direct focus
+  failure would have printed.
+- **Matchers.** `focus.Matcher` declares exactly the method set both gomock
+  modules require — `Matches(x any) error` plus `String() string` — and
+  `Match` plus the built-ins (`MatchSequence`, `MatchSourceAccount`,
+  `MatchResultCode`, …) build values that satisfy it structurally. A
+  generated mock accepts them as argument expectations; a miss returns the
+  underlying assertion's own failure text, and `String()` is what gomock
+  prints for the expectation.
+
+Adapters obey the same rules as assertions: never panicking (a panic inside
+the assertion is recovered by `SafeCall` and returned as an error carrying
+the bug-report prompt), no I/O, no network. `adapters_test.go` proves each
+adapter's error is byte-identical to what the direct assertion reports to
+`internal/faketb`.
+
+## The `focus assert` command
+
+`focus assert <tx-xdr>` is a terminal assistant that turns a transaction
+someone already has into the assertions describing it: it decodes the base64
+with lens, offers one suggestion per field the transaction carries, and
+prints the kept ones as paste-ready Go (`cmd/focus/interactive.go`).
+
+What it promises:
+
+- **stdout is generated code, stderr is the conversation.** Prompts,
+  suggestions and counts go to stderr, so `focus assert … > snippet.go`
+  yields nothing but calls, and `--all` emits everything with no prompting.
+- **Suggestions are honest.** Each is built from the same `lens.Explain`
+  summary the assertions compare against, optional fields (memo, fee-bump
+  wrapper, time and ledger bounds) are offered only when the transaction
+  carries them, and `--var` names the generated variable. Every suggestion
+  keeps the assertion behind it, so the tests can run each one against its
+  own transaction (passes) and against a different one (fails with a
+  descriptive diff) through `internal/faketb`.
+- **End of input keeps the rest.** Answers are `y` or Enter, `n`, `a`, `q`;
+  when stdin ends, the remaining suggestions are kept, so a short script
+  never truncates the output.
+- **Offline.** Decode, summary and every suggested assertion run locally;
+  there is no network call on this path.
+
+The command is assembled in `cmd/focus` and registered with the root
+command through `cli.Execute`'s extra-command parameter, which keeps the
+interactive flow beside `main` while `internal/cli` stays about fixtures.
+
 ## Adding a fixture source
 
-Implement `capture.Source` and wire it into `internal/cli`. Horizon and a
-local core instance are the obvious candidates. Return one `Record` per
+Implement `capture.Source` and wire it into `internal/cli`. RPC, Horizon,
+a dump directory and a history archive exist; a local core instance is the
+obvious next candidate. Return one `Record` per
 payload — an envelope, a result and a meta are three fixtures, not one — and
 populate `Ledger` and `TxHash` so `focus verify` can re-fetch later.
 
@@ -815,6 +970,12 @@ violated:
   (`TestAuditPassesOnRepo`);
 - diagnostic streams are matched in order, with an absence and a swap named
   differently (`TestAssertDiagnosticEventOrderMessages`);
+- an adapter's error is byte-identical to the failure the direct assertion
+  reports to `internal/faketb`, and adapters never panic on hostile input
+  (`TestErrAdaptersAgreeWithTheDirectAssertions`, `TestMatchersNeverPanic`);
+- assertions generated by `focus assert` hold against their own transaction
+  and fail with a descriptive diff against a different one
+  (`TestGeneratedAssertionsHoldAndFailDescriptively`);
 - a diagnostic stream is pinned to the ledger its meta pins, and a stream that
   cannot be placed is reported rather than passed
   (`TestAssertDiagnosticEventTimelineMessages`);

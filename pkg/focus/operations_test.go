@@ -11,25 +11,25 @@ import (
 )
 
 // createAccountOpFor builds a create-account operation.
-func createAccountOpFor(t testing.TB, dest string, startingBalance int64) xdr.Operation {
-	t.Helper()
+func createAccountOpFor(tb testing.TB, dest string, startingBalance int64) xdr.Operation {
+	tb.Helper()
 
 	return xdr.Operation{Body: xdr.OperationBody{
 		Type: xdr.OperationTypeCreateAccount,
 		CreateAccountOp: &xdr.CreateAccountOp{
-			Destination:     mustAccountID(t, dest),
+			Destination:     mustAccountID(tb, dest),
 			StartingBalance: xdr.Int64(startingBalance),
 		},
 	}}
 }
 
 // changeTrustOpFor builds a change-trust operation for a credit asset.
-func changeTrustOpFor(t testing.TB, code string, limit int64) xdr.Operation {
-	t.Helper()
+func changeTrustOpFor(tb testing.TB, code string, limit int64) xdr.Operation {
+	tb.Helper()
 
 	var asset xdr.Asset
-	if err := asset.SetCredit(code, mustAccountID(t, testIssuer)); err != nil {
-		t.Fatalf("building asset %s: %v", code, err)
+	if err := asset.SetCredit(code, mustAccountID(tb, testIssuer)); err != nil {
+		tb.Fatalf("building asset %s: %v", code, err)
 	}
 
 	return xdr.Operation{Body: xdr.OperationBody{
@@ -49,7 +49,7 @@ func TestAssertPayment(t *testing.T) {
 
 	env := buildEnvelope(t,
 		paymentOp(t, 100_0000000),
-		creditPaymentOp(t, "USDC", 5),
+		creditPaymentOp(t, 5),
 	)
 
 	t.Run("the payment matches", func(t *testing.T) {

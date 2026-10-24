@@ -7,14 +7,13 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/stellar-optics/stellar-focus/internal/fakesource"
 	"github.com/stellar-optics/stellar-focus/pkg/capture"
 	"github.com/stellar-optics/stellar-focus/pkg/golden"
 )
 
 // captureIntoDir seeds a directory with the fixtures of one captured
 // transaction, exactly as `focus capture tx` would.
-func captureIntoDir(t *testing.T, src *fakesource.Source, dir string) {
+func captureIntoDir(t *testing.T, dir string) {
 	t.Helper()
 	stdout, stderr, err := run(t, "capture", "tx", testHash, "--out", dir)
 	if err != nil {
@@ -27,7 +26,7 @@ func TestVerifyAcceptsAnExplicitFile(t *testing.T) {
 	withFake(t, src)
 
 	dir := t.TempDir()
-	captureIntoDir(t, src, dir)
+	captureIntoDir(t, dir)
 
 	path := filepath.Join(dir, "envelope.golden.json")
 	stdout, stderr, err := run(t, "verify", path)
@@ -44,7 +43,7 @@ func TestVerifyCombinesFilesAndDirectories(t *testing.T) {
 	withFake(t, src)
 
 	dir := t.TempDir()
-	captureIntoDir(t, src, dir)
+	captureIntoDir(t, dir)
 
 	envelope := filepath.Join(dir, "envelope.golden.json")
 	stdout, stderr, err := run(t, "verify", envelope, dir)
@@ -77,7 +76,7 @@ func TestVerifyFlagsGoneFixtures(t *testing.T) {
 	withFake(t, src)
 
 	dir := t.TempDir()
-	captureIntoDir(t, src, dir)
+	captureIntoDir(t, dir)
 
 	// The transaction ages out of the endpoint's retention window.
 	delete(src.Transactions, testHash)
@@ -99,7 +98,7 @@ func TestVerifyReportsCorruptFixtures(t *testing.T) {
 	withFake(t, src)
 
 	dir := t.TempDir()
-	captureIntoDir(t, src, dir)
+	captureIntoDir(t, dir)
 
 	corrupt := filepath.Join(dir, "corrupt.golden.json")
 	if err := os.WriteFile(corrupt, []byte("{not json"), 0o644); err != nil {
@@ -126,7 +125,7 @@ func TestVerifyReportsUncheckableFixtures(t *testing.T) {
 	withFake(t, src)
 
 	dir := t.TempDir()
-	captureIntoDir(t, src, dir)
+	captureIntoDir(t, dir)
 
 	// The endpoint is unreachable: that is not fixture drift, and the
 	// command must not claim the fixtures changed.
@@ -149,7 +148,7 @@ func TestVerifyRejectsAnUnknownNetwork(t *testing.T) {
 	withFake(t, src)
 
 	dir := t.TempDir()
-	captureIntoDir(t, src, dir)
+	captureIntoDir(t, dir)
 
 	_, _, err := run(t, "verify", dir, "--network", "venus")
 	if err == nil {
@@ -165,7 +164,7 @@ func TestVerifyDriftExitsWithDriftCode(t *testing.T) {
 	withFake(t, src)
 
 	dir := t.TempDir()
-	captureIntoDir(t, src, dir)
+	captureIntoDir(t, dir)
 
 	// The chain moves: the same hash now returns different envelope XDR,
 	// while the result still matches.
@@ -192,7 +191,7 @@ func TestVerifySinceChecksOnlyRecentFixtures(t *testing.T) {
 	withFake(t, src)
 
 	dir := t.TempDir()
-	captureIntoDir(t, src, dir)
+	captureIntoDir(t, dir)
 	src.Calls = 0
 
 	// The fixtures were captured at the fake clock's time, so a threshold
@@ -232,7 +231,7 @@ func TestVerifySinceAcceptsADuration(t *testing.T) {
 	withFake(t, src)
 
 	dir := t.TempDir()
-	captureIntoDir(t, src, dir)
+	captureIntoDir(t, dir)
 
 	// The fixtures are made to look as if they were captured a week ago.
 	for _, name := range []string{"envelope.golden.json", "result.golden.json"} {
@@ -300,7 +299,7 @@ func TestVerifyFilterSelectsFixtures(t *testing.T) {
 	withFake(t, src)
 
 	dir := t.TempDir()
-	captureIntoDir(t, src, dir)
+	captureIntoDir(t, dir)
 	src.Calls = 0
 
 	// A glob picks one fixture out of the two.
@@ -347,7 +346,7 @@ func TestVerifyDriftedOnlyRechecksWhatDrifted(t *testing.T) {
 	withFake(t, src)
 
 	dir := t.TempDir()
-	captureIntoDir(t, src, dir)
+	captureIntoDir(t, dir)
 
 	// The chain moves: the envelope no longer matches what was captured.
 	src.Transactions[testHash] = driftedRecords(t)
@@ -396,7 +395,7 @@ func TestVerifyDriftedOnlyRechecksAChangedFixture(t *testing.T) {
 	withFake(t, src)
 
 	dir := t.TempDir()
-	captureIntoDir(t, src, dir)
+	captureIntoDir(t, dir)
 
 	if _, _, err := run(t, "verify", dir); err != nil {
 		t.Fatalf("verify: %v", err)
