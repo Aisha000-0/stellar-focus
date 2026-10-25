@@ -33,6 +33,7 @@ internal/faketb/      recording focus.TB — lets focus test its own messages
 internal/fakesource/  in-memory capture.Source, so the CLI tests run offline
 pkg/focus/
   focus.go            TB, Value coercion, panic guard, Encode
+  equal_example_test.go executable AssertEnvelopeEqual godoc example
   safe_exec.go        panic-safe harness: SafeExec, SafeCall, PanicError
   terminal.go         ANSI colour helpers, field highlighting, TTY detection
   snapshot.go         snapshot testing for failure messages
@@ -94,6 +95,13 @@ and `stellar-xdr-lens`. That is enforced by `TestLibraryStaysDependencyLight`
 (compiled graph via `go list -deps`) and by the AST check in
 `pkg/focus/deps_lint_test.go` (import specs, pinpointing file and line)
 rather than left to discipline.
+
+The library packages also have a one-way dependency order:
+`pkg/focus` → `pkg/golden` → `pkg/capture` → `internal/cli`.
+`pkg/focus/decouple_test.go` checks the compiled production graph for each
+layer (including the `require` packages) with module downloads disabled. This
+keeps assertions usable without fixture, capture, or CLI dependencies; capture
+can still use golden fixtures, and golden can use focus assertions.
 
 ## CLI configuration
 
@@ -168,6 +176,12 @@ Taking an interface rather than `*testing.T` buys three things:
 
 `Helper()` is called by every assertion so `go test` reports the caller's
 file and line rather than a line inside this library.
+
+`pkg/focus/equal_example_test.go` runs as a Go example and appears in godoc
+under `AssertEnvelopeEqual`. It compares two in-memory XDR envelopes and checks
+that the failure names `SeqNum`. `cmd/focus/examples_test.go` exercises the
+same documented path through `internal/faketb`, including equal envelopes and
+invalid input. These examples never create a capture source or contact RPC.
 
 ## Value coercion
 
