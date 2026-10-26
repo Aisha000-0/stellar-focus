@@ -186,6 +186,13 @@ Working and tested:
   `PrettyAs` functions for debugging and diagnostics, with enriched values
   (stroops+XLM, asset codes, memo types, result codes) and deterministic
   output matching assertion failure vocabulary
+- Enhanced `internal/faketb.TB` — count queries (`ErrorCount`, `FatalCount`, `TotalCount`),
+  fatal detection (`FatalfCalled`), latest message accessors (`LastError`, `LastFatal`),
+  substring filtering (`ErrorsContaining`, `FatalsContaining`), state management
+  (`Reset`), and fluent assertion helpers (`AssertErrorCount`, `AssertFatalCount`,
+  `AssertTotalCount`, `AssertErrorContaining`, `AssertFatalContaining`,
+  `AssertNoErrors`, `AssertNoFatals`, `AssertNoFailures`); all thread-safe with
+  100% test coverage
 - Assertion adapters for other test ecosystems (`pkg/focus/adapters.go`):
   `Check` and the `Err*` wrappers turn any focus assertion into an error
   testify's `assert`/`require` (or gocheck) can report with the same

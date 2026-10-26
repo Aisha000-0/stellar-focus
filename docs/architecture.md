@@ -268,7 +268,6 @@ Three choices keep the mechanism trustworthy:
 `TestFailureMessageSnapshot` is the integration point: it snapshots a real
 `AssertEnvelopeEqual` failure, so a change to the diff layout is a red test
 with a one-line snapshot review rather than a silent change in what users see.
-
 ## Pretty formatter
 
 `pkg/focus/pretty.go` provides a concise, human-readable formatter for
@@ -319,6 +318,52 @@ Key properties:
 The formatter is used internally by the test suite for debugging and can be
 called directly by users who want to inspect XDR values in their tests.
 
+## Enhanced faketb testing helper
+
+`internal/faketb` provides a recording implementation of `focus.TB` that lets
+focus test its own failure messages. The `TB` records all `Errorf` and `Fatalf`
+calls instead of failing the test, enabling precise assertions on message text.
+
+The enhanced `TB` includes methods for:
+
+- **Count queries**: `ErrorCount()`, `FatalCount()`, `TotalCount()`
+- **Fatal detection**: `FatalfCalled()` reports whether `Fatalf` was invoked
+- **Latest messages**: `LastError()`, `LastFatal()` for the most recent failure
+- **Substring filtering**: `ErrorsContaining(substr)`, `FatalsContaining(substr)`
+- **State management**: `Reset()` clears all recorded messages for reuse
+- **Assertion helpers**: `AssertErrorCount(n)`, `AssertFatalCount(n)`, `AssertTotalCount(n)`,
+  `AssertErrorContaining(substr)`, `AssertFatalContaining(substr)`,
+  `AssertNoErrors()`, `AssertNoFatals()`, `AssertNoFailures()`
+
+All methods are thread-safe, using a mutex to protect concurrent access.
+
+Example usage:
+
+```go
+func TestAssertEnvelopeEqualFailureMessage(t *testing.T) {
+	tb := faketb.New()
+	focus.AssertEnvelopeEqual(tb, want, got)
+
+	// Verify exactly one failure was reported
+	if err := tb.AssertTotalCount(1); err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify the message contains the expected field path
+	if err := tb.AssertErrorContaining("Body.PaymentOp.Amount"); err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify the message shows both values
+	msg, _ := tb.Message()
+	if !strings.Contains(msg, "1000000000") || !strings.Contains(msg, "2000000000") {
+		t.Errorf("message missing amounts: %s", msg)
+	}
+}
+```
+
+The `TB` also implements `Failed()` for compatibility with `testing.TB`, and
+`Output()` joins all messages for substring assertions.
 ## Ignore rules
 
 Without them the library is unusable on real suites — a rebuilt transaction
