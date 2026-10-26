@@ -182,6 +182,10 @@ Working and tested:
   structural diff rendering each change side by side as labelled `want`/`got`
   values that strip cleanly to plain text (`pkg/focus/terminal.go`,
   `pkg/focus/message.go`; opt-in via `WithColor("always")`)
+- Concise XDR struct formatter (`pkg/focus/pretty.go`) — `Pretty` and
+  `PrettyAs` functions for debugging and diagnostics, with enriched values
+  (stroops+XLM, asset codes, memo types, result codes) and deterministic
+  output matching assertion failure vocabulary
 - Assertion adapters for other test ecosystems (`pkg/focus/adapters.go`):
   `Check` and the `Err*` wrappers turn any focus assertion into an error
   testify's `assert`/`require` (or gocheck) can report with the same

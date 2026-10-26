@@ -40,6 +40,7 @@ pkg/focus/
   options.go          ignore and normalize options
   ignore_rules.go     ignore path matching: wildcards, globs, case-insensitive
   message.go          failure-message rendering        ← the product
+  pretty.go           concise XDR struct formatter     ← debug & diagnostics
   equal.go            structural equality assertions   ← seam: new assertions
   fields.go           envelope field assertions
   timebounds.go       time and ledger bound assertions
@@ -267,6 +268,56 @@ Three choices keep the mechanism trustworthy:
 `TestFailureMessageSnapshot` is the integration point: it snapshots a real
 `AssertEnvelopeEqual` failure, so a change to the diff layout is a red test
 with a one-line snapshot review rather than a silent change in what users see.
+
+## Pretty formatter
+
+`pkg/focus/pretty.go` provides a concise, human-readable formatter for
+Stellar XDR structs. It prevents the unreadable `%+v` dumps that result from
+printing raw XDR structs directly.
+
+The formatter accepts the same input forms as the assertions: a base64 string,
+raw `[]byte`, any `xdr.*` type implementing `encoding.BinaryMarshaler`, or a
+`*lens.Value`. It uses `lens` to decode the value, then walks the neutral Node
+tree producing a compact representation that shows field names and enriched
+values (e.g., stroops shown with XLM equivalents, addresses shown as strkeys).
+
+```go
+// Pretty formats any accepted XDR value
+func Pretty(v Value) string
+
+// PrettyAs formats with an explicit type (preferred for short payloads)
+func PrettyAs(typeName string, v Value) string
+```
+
+Example output for a payment envelope:
+
+```
+TransactionEnvelope {
+  V1.Tx.SourceAccount: GCJNHFXJEQEY54NPKU4DBMT5WOBJUHMYSFBDAQF4OMTEGJN4BQU7ZST6
+  V1.Tx.Fee: 100 (0.0000100 XLM)
+  V1.Tx.SeqNum: 12345
+  V1.Tx.Operations[0].Body.PaymentOp.Destination: GAPB7YMUQ6MPQ23PTFDNBZP7HGGTZPI2DT5JJURUOIXNPLGHW2O3WYXZ
+  V1.Tx.Operations[0].Body.PaymentOp.Asset: native
+  V1.Tx.Operations[0].Body.PaymentOp.Amount: 1000000000 (100.0000000 XLM)
+  V1.Tx.Memo: none
+}
+```
+
+Key properties:
+
+- **Deterministic**: Same input always produces same output; no clocks, no
+  network, no map iteration order.
+- **Offline-first**: No network calls; uses only local decoding via lens.
+- **Never panics**: Invalid input returns a descriptive error string instead
+  of panicking.
+- **Enriched values**: Amounts show both stroops and XLM; assets show as
+  `code:issuer` or `native`; memos show as `text:...`, `id:...`, `hash:...`,
+  etc.; result codes show short forms (e.g., `txSuccess`, `paymentSuccess`).
+- **Consistent vocabulary**: Uses the same field paths and value renderings
+  as assertion failure messages, so `Pretty` output and diff output agree.
+
+The formatter is used internally by the test suite for debugging and can be
+called directly by users who want to inspect XDR values in their tests.
 
 ## Ignore rules
 
