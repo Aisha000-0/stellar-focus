@@ -14,12 +14,39 @@ import (
 	"github.com/stellar-optics/stellar-focus/pkg/golden"
 )
 
+func TestNewAccountLedgerKey(t *testing.T) {
+	t.Parallel()
+
+	const address = "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF"
+	key, err := capture.NewAccountLedgerKey(address)
+	if err != nil {
+		t.Fatalf("NewAccountLedgerKey() error = %v", err)
+	}
+	if key.Type != 0 {
+		t.Fatalf("key type = %v, want account", key.Type)
+	}
+	encoded, err := capture.EncodeLedgerKey(key)
+	if err != nil {
+		t.Fatalf("EncodeLedgerKey() error = %v", err)
+	}
+	if encoded == "" {
+		t.Fatal("EncodeLedgerKey() returned an empty string")
+	}
+}
+
+func TestNewAccountLedgerKeyRejectsInvalidAddress(t *testing.T) {
+	t.Parallel()
+	if _, err := capture.NewAccountLedgerKey("not-an-account"); err == nil {
+		t.Fatal("NewAccountLedgerKey() accepted an invalid StrKey")
+	}
+}
+
 // capturedAt is fixed so fixtures produced by these tests are byte-stable.
 var capturedAt = time.Date(2026, 8, 5, 12, 0, 0, 0, time.UTC)
 
 func envelopeXDR(t *testing.T) string {
 	t.Helper()
-	b, err := os.ReadFile(filepath.Join("..", "..", "testdata", "tx_failed.env.txt"))
+	b, err := os.ReadFile(filepath.Join("..", "..", "pkg", "fuzz", "testdata", "tx_failed.env.txt"))
 	if err != nil {
 		t.Fatalf("reading fixture: %v", err)
 	}
@@ -28,7 +55,7 @@ func envelopeXDR(t *testing.T) string {
 
 func resultXDR(t *testing.T) string {
 	t.Helper()
-	b, err := os.ReadFile(filepath.Join("..", "..", "testdata", "tx_failed.res.txt"))
+	b, err := os.ReadFile(filepath.Join("..", "..", "pkg", "fuzz", "testdata", "tx_failed.res.txt"))
 	if err != nil {
 		t.Fatalf("reading fixture: %v", err)
 	}
@@ -149,6 +176,56 @@ func TestVerifyMatches(t *testing.T) {
 	}
 }
 
+func TestCaptureBindsNetworkPassphraseAndVerifyChecksIt(t *testing.T) {
+	t.Parallel()
+
+	const hash = "abc123"
+	src := sourceWithTransaction(t, hash)
+	src.Passphrase = "Test SDF Network ; September 2015"
+	records, err := src.Transaction(context.Background(), hash)
+	if err != nil {
+		t.Fatalf("Transaction() error = %v", err)
+	}
+	fixtures, err := capture.Capture(context.Background(), src, records, capturedAt)
+	if err != nil {
+		t.Fatalf("Capture() error = %v", err)
+	}
+	if got := fixtures[0].Captured.NetworkPassphrase; got != src.Passphrase {
+		t.Fatalf("captured passphrase = %q, want %q", got, src.Passphrase)
+	}
+
+	src.Passphrase = "Public Global Stellar Network ; September 2015"
+	got := capture.Verify(context.Background(), src, "envelope.golden.json", fixtures[0])
+	if got.Err == nil || !strings.Contains(got.Err.Error(), "passphrase mismatch") {
+		t.Fatalf("Verify() error = %v, want passphrase mismatch", got.Err)
+	}
+}
+
+func TestVerifyRefusesAnonymizedFixturesWithoutFetching(t *testing.T) {
+	t.Parallel()
+
+	const hash = "abc123"
+	src := sourceWithTransaction(t, hash)
+	records, err := src.Transaction(context.Background(), hash)
+	if err != nil {
+		t.Fatalf("Transaction() error = %v", err)
+	}
+	records[0].Anonymized = true
+	fixtures, err := capture.Capture(context.Background(), src, records[:1], capturedAt)
+	if err != nil {
+		t.Fatalf("Capture() error = %v", err)
+	}
+	src.Calls = 0
+
+	got := capture.Verify(context.Background(), src, "masked.golden.json", fixtures[0])
+	if got.Err == nil || !strings.Contains(got.Err.Error(), "anonymized") {
+		t.Fatalf("Verify() error = %v, want anonymized fixture explanation", got.Err)
+	}
+	if src.Calls != 0 {
+		t.Errorf("Verify() fetched %d times for an anonymized fixture", src.Calls)
+	}
+}
+
 // TestVerifyDetectsDrift covers the point of the command: a fixture that no
 // longer matches the chain must be reported, with the change named.
 func TestVerifyDetectsDrift(t *testing.T) {
@@ -265,6 +342,46 @@ func TestResolveEndpoint(t *testing.T) {
 	}
 }
 
+// TestResolveHorizonEndpoint checks that the Horizon defaults are their
+// own, since a Horizon endpoint and an RPC endpoint are different
+// services.
+func TestResolveHorizonEndpoint(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		network  string
+		override string
+		want     string
+		wantErr  bool
+	}{
+		{"testnet default", capture.NetworkTestnet, "", capture.DefaultHorizonEndpoints[capture.NetworkTestnet], false},
+		{"mainnet default", capture.NetworkMainnet, "", capture.DefaultHorizonEndpoints[capture.NetworkMainnet], false},
+		{"override wins", capture.NetworkTestnet, "http://localhost:8000", "http://localhost:8000", false},
+		{"unknown network", "wonderland", "", "", true},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			got, err := capture.ResolveHorizonEndpoint(tc.network, tc.override)
+			if tc.wantErr {
+				if err == nil {
+					t.Fatal("ResolveHorizonEndpoint() error = nil, want an error")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("ResolveHorizonEndpoint() error = %v", err)
+			}
+			if got != tc.want {
+				t.Errorf("ResolveHorizonEndpoint() = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
 // TestDefaultIsTestnet guards against a tool that reaches for mainnet unless
 // told otherwise.
 func TestDefaultIsTestnet(t *testing.T) {
@@ -277,7 +394,7 @@ func TestDefaultIsTestnet(t *testing.T) {
 
 func fixtureFromFile(t *testing.T, name string) string {
 	t.Helper()
-	b, err := os.ReadFile(filepath.Join("..", "..", "testdata", name))
+	b, err := os.ReadFile(filepath.Join("..", "..", "pkg", "fuzz", "testdata", name))
 	if err != nil {
 		t.Fatalf("reading %s: %v", name, err)
 	}

@@ -16,7 +16,11 @@ import (
 // repositories. Two of them differ, which is all a conflict needs.
 func testEnvelope(t *testing.T, name string) string {
 	t.Helper()
-	b, err := os.ReadFile(filepath.Join("..", "..", "testdata", name))
+	path := filepath.Join("..", "..", "pkg", "fuzz", "testdata", name)
+	if _, err := os.Stat(path); err != nil {
+		path = filepath.Join("..", "..", "testdata", name)
+	}
+	b, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("reading %s: %v", name, err)
 	}
