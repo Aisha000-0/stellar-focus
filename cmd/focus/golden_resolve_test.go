@@ -27,7 +27,7 @@ func testEnvelope(t *testing.T, name string) string {
 	return strings.TrimSpace(string(b))
 }
 
-func saveFixture(t *testing.T, dir, name, xdr string) string {
+func saveFixture(t *testing.T, dir, name, xdr string) {
 	t.Helper()
 	fixture, err := golden.Build(xdr, "TransactionEnvelope", "", nil)
 	if err != nil {
@@ -37,13 +37,13 @@ func saveFixture(t *testing.T, dir, name, xdr string) string {
 	if err := golden.Save(path, fixture); err != nil {
 		t.Fatalf("Save() error = %v", err)
 	}
-	return path
 }
 
 // conflictDirs sets up one golden file and a candidate proposing a
 // different envelope under the same name.
-func conflictDirs(t *testing.T, name string) (goldenDir, candidateDir, stored, proposed string) {
+func conflictDirs(t *testing.T) (goldenDir, candidateDir, stored, proposed string) {
 	t.Helper()
+	const name = "env.golden.json"
 	goldenDir = t.TempDir()
 	candidateDir = t.TempDir()
 	stored = testEnvelope(t, "tx_failed.env.txt")
@@ -121,7 +121,7 @@ func TestResolveRequiresCandidateFlag(t *testing.T) {
 func TestResolvePromptsShowsDiffAndAccepts(t *testing.T) {
 	t.Parallel()
 
-	goldenDir, candidateDir, _, proposed := conflictDirs(t, "env.golden.json")
+	goldenDir, candidateDir, _, proposed := conflictDirs(t)
 
 	out, errOut, err := resolve(t, "y\n", candidateDir, goldenDir)
 	if err != nil {
@@ -161,7 +161,7 @@ func TestResolvePromptsShowsDiffAndAccepts(t *testing.T) {
 func TestResolveRejectKeepsGoldenAndAssertionsAccurate(t *testing.T) {
 	t.Parallel()
 
-	goldenDir, candidateDir, stored, proposed := conflictDirs(t, "env.golden.json")
+	goldenDir, candidateDir, stored, proposed := conflictDirs(t)
 
 	out, errOut, err := resolve(t, "n\n", candidateDir, goldenDir)
 	if err != nil {
@@ -257,7 +257,7 @@ func TestResolveQuitLeavesTheRestUnresolved(t *testing.T) {
 func TestResolveRepromptsOnAnUnrecognisedAnswer(t *testing.T) {
 	t.Parallel()
 
-	goldenDir, candidateDir, _, _ := conflictDirs(t, "env.golden.json")
+	goldenDir, candidateDir, _, _ := conflictDirs(t)
 
 	out, errOut, err := resolve(t, "huh\ny\n", candidateDir, goldenDir)
 	if err != nil {
@@ -279,7 +279,7 @@ func TestResolveRepromptsOnAnUnrecognisedAnswer(t *testing.T) {
 func TestResolveStopsWhenInputCloses(t *testing.T) {
 	t.Parallel()
 
-	goldenDir, candidateDir, stored, _ := conflictDirs(t, "env.golden.json")
+	goldenDir, candidateDir, stored, _ := conflictDirs(t)
 
 	out, errOut, err := resolve(t, "", candidateDir, goldenDir)
 	if err != nil {
@@ -303,7 +303,7 @@ func TestResolveStopsWhenInputCloses(t *testing.T) {
 func TestResolveTreatsIdenticalCandidateAsUnchanged(t *testing.T) {
 	t.Parallel()
 
-	goldenDir, candidateDir, stored, _ := conflictDirs(t, "env.golden.json")
+	goldenDir, candidateDir, stored, _ := conflictDirs(t)
 	// Replace the proposal with a byte-identical copy of the golden file.
 	raw, err := os.ReadFile(filepath.Join(goldenDir, "env.golden.json"))
 	if err != nil {
@@ -332,7 +332,7 @@ func TestResolveTreatsIdenticalCandidateAsUnchanged(t *testing.T) {
 func TestResolveTreatsCRLFAsUnchanged(t *testing.T) {
 	t.Parallel()
 
-	goldenDir, candidateDir, _, _ := conflictDirs(t, "env.golden.json")
+	goldenDir, candidateDir, _, _ := conflictDirs(t)
 	path := filepath.Join(goldenDir, "env.golden.json")
 	raw, err := os.ReadFile(path)
 	if err != nil {
@@ -536,7 +536,7 @@ func TestResolveReportsEmptyInputs(t *testing.T) {
 		t.Error("an empty candidate directory did not fail")
 	}
 
-	_, candidateDir, _, _ := conflictDirs(t, "env.golden.json")
+	_, candidateDir, _, _ := conflictDirs(t)
 	if _, _, err := resolve(t, "", candidateDir, t.TempDir()); err == nil {
 		t.Error("golden paths without fixtures did not fail")
 	}
@@ -550,7 +550,7 @@ func TestResolveReportsEmptyInputs(t *testing.T) {
 func TestResolveRunsThroughTheCommandTree(t *testing.T) {
 	t.Parallel()
 
-	goldenDir, candidateDir, _, proposed := conflictDirs(t, "env.golden.json")
+	goldenDir, candidateDir, _, proposed := conflictDirs(t)
 
 	out, errOut, err := runGoldenCmd(t, "y\n",
 		"resolve", "--candidate", candidateDir, goldenDir)
