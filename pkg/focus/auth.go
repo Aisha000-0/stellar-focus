@@ -658,7 +658,7 @@ func noAuthorizationsMessage(
 		return "", false
 	}
 	b.WriteString("\n  operations present:\n")
-	b.WriteString(indent(operationList(summary), "    "))
+	b.WriteString(indentWith(operationList(summary), "    "))
 	b.WriteString("\n\n  Soroban authorizations are carried on invoke_host_function operations; " +
 		"this envelope has none, so there is nothing to check against invoker ")
 	b.WriteString(inv.short)
@@ -676,7 +676,7 @@ func authMismatchMessage(assertion string, scan authScan, inv authInvoker, want 
 		fmt.Fprintf(&b, " calling %s", described)
 	}
 	b.WriteString("\n\n")
-	b.WriteString(indent(describeAuthEntries(scan.entries), "  "))
+	b.WriteString(indentWith(describeAuthEntries(scan.entries), "  "))
 	b.WriteString("\n")
 
 	if matched := scan.byInvoker(inv); len(matched) > 0 {
@@ -685,7 +685,7 @@ func authMismatchMessage(assertion string, scan authScan, inv authInvoker, want 
 			gots = append(gots, representativeCall(e, want))
 		}
 		b.WriteString("\n  invoker matched, but the transaction authorizes a different call:\n")
-		b.WriteString(indent(renderAuthDifference("authorized call", describeExpectedCall(want), gots), "    "))
+		b.WriteString(indentWith(renderAuthDifference("authorized call", describeExpectedCall(want), gots), "    "))
 		b.WriteString("\n")
 	} else if matched := scan.byCall(want); len(matched) > 0 {
 		gots := make([]string, 0, len(matched))
@@ -693,7 +693,7 @@ func authMismatchMessage(assertion string, scan authScan, inv authInvoker, want 
 			gots = append(gots, e.invokerDisplay())
 		}
 		b.WriteString("\n  the call is authorized, but not by the expected invoker:\n")
-		b.WriteString(indent(renderAuthDifference("invoker", inv.short, gots), "    "))
+		b.WriteString(indentWith(renderAuthDifference("invoker", inv.short, gots), "    "))
 		b.WriteString("\n")
 	}
 	return strings.TrimRight(b.String(), "\n")
@@ -793,4 +793,19 @@ func describeAuthArgs(args []string) string {
 	shown = append(shown, args[:maxShown]...)
 	shown = append(shown, fmt.Sprintf("… +%d", len(args)-maxShown))
 	return strings.Join(shown, ", ")
+}
+
+// indentWith prefixes every non-empty line of s with prefix.
+func indentWith(s, prefix string) string {
+	if s == "" {
+		return s
+	}
+	lines := strings.Split(s, "\n")
+	for i, l := range lines {
+		if l == "" {
+			continue
+		}
+		lines[i] = prefix + l
+	}
+	return strings.Join(lines, "\n")
 }

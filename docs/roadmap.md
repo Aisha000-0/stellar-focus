@@ -10,6 +10,8 @@ Working and tested:
   failure output that names the changed field path, plus a round-trip
   assertion that re-encodes a value and diffs the two decoded trees so a
   lossy encoder is reported by field rather than by base64
+- Executable `AssertEnvelopeEqual` godoc example and offline example tests
+  covering a matching envelope, a changed sequence number, and invalid XDR
 - Field assertions: source, fee, sequence, memo, operation counts and types,
   signature count, fee-bump, and the source account an individual operation
   names — including the account it falls back to when it names none
@@ -31,6 +33,15 @@ Working and tested:
   explanation and hint; operation result codes can be checked by short name,
   and an unknown code or an XDR constant name is called out as such
 - Soroban: event matching, event counts, return values, contract traps
+- Ordered event sequences: `AssertEventsEqual` pins the whole list of contract
+  events — the count, the order and each event's payload — and a failure prints
+  the event that deviated beside the event that was wanted, with the options
+  that relaxed the comparison named
+- Soroban resource budgets and the refundable resource fee, read from the
+  transaction's `SorobanTransactionData`
+- Typed operation assertions: what a payment pays and to whom, what starting
+  balance an account is created with, and what limit a trustline is changed to
+  — with amounts in both stroops and XLM
 - Contract errors by category and code: the `ScError` a failed invocation
   recorded — a contract's own error code, or one of the host's named codes —
   read from the Soroban return value or from the host's error diagnostic
@@ -111,6 +122,10 @@ Working and tested:
   export to Go fuzz seed corpora
 - `focus capture` and `focus verify` against a live network, from a Soroban
   RPC endpoint or from Horizon, chosen with `--source`
+- Narrowed verification: `focus verify --since`, `--filter` and `--drifted-only`,
+  so a repository with hundreds of fixtures can be re-checked without
+  re-fetching all of them, with the fixtures left out reported rather than
+  quietly passing
 - A machine-readable `focus verify`: `--format json` prints one JSON document
   with the counts, the status of every fixture and the paths that changed, so
   a pipeline can post a pull-request comment or a step summary without
@@ -159,6 +174,8 @@ Working and tested:
   contract that does not match the one the ledger names
   (`pkg/capture/contract_wasm.go`)
 - Dependency-light library, enforced by compiled-graph and AST tests
+- Package boundaries between focus, golden, capture, and CLI enforced by an
+  offline compiled-graph test (`pkg/focus/decouple_test.go`)
 - No assertion panics, enforced by test via a panic-safe harness
   (`SafeExec`/`SafeCall` in `pkg/focus/safe_exec.go`)
 - Colourized terminal output highlighting the mismatched field, with the

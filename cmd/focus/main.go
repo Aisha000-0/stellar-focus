@@ -24,10 +24,10 @@ import (
 )
 
 func main() {
-	// `focus assert` is assembled here in interactive.go and registered with
-	// the root command, so the interactive generator lives beside main while
-	// internal/cli stays about fixtures.
-	err := cli.Execute(os.Args[1:], os.Stdout, os.Stderr, newAssertCmd())
+	// `focus assert` and `focus golden` are assembled in cmd/focus and registered
+	// with the root command, keeping interactive generators and golden tooling
+	// beside main while internal/cli stays focused on fixtures.
+	err := cli.Execute(os.Args[1:], os.Stdout, os.Stderr, newAssertCmd(), newGoldenCmd())
 	code, printable := cli.ExitCode(err)
 	if printable && err != nil {
 		fmt.Fprintln(os.Stderr, "focus:", err)
