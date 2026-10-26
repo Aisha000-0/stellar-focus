@@ -285,7 +285,7 @@ func TestPrettyOutputLength(t *testing.T) {
 func TestPrettyCreditAsset(t *testing.T) {
 	t.Parallel()
 
-	op := creditPaymentOp(t, "USDC", 50_0000000)
+	op := creditPaymentOp(t, 50_0000000)
 	env := buildEnvelope(t, op)
 	output := focus.Pretty(env)
 
@@ -435,7 +435,7 @@ func TestPrettyOfferEntry(t *testing.T) {
 func TestPrettyTrustline(t *testing.T) {
 	t.Parallel()
 
-	entry := trustlineEntryValue(t, testSource, "USDC", 50_0000000, 100_0000000)
+	entry := trustlineEntryValue(t, 50_0000000, 100_0000000)
 	output := focus.Pretty(entry)
 
 	for _, want := range []string{
