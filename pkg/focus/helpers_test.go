@@ -86,8 +86,8 @@ func clawbackOp(t *testing.T) xdr.Operation {
 	return xdr.Operation{Body: xdr.OperationBody{
 		Type: xdr.OperationTypeClawback,
 		ClawbackOp: &xdr.ClawbackOp{
-			Asset: creditAsset(t, "USDC"),
-			From:  mustMuxed(t, testDest),
+			Asset:  creditAsset(t, "USDC"),
+			From:   mustMuxed(t, testDest),
 			Amount: xdr.Int64(50_0000000),
 		},
 	}}
@@ -123,10 +123,10 @@ func liquidityPoolDepositOp(t *testing.T) xdr.Operation {
 		Type: xdr.OperationTypeLiquidityPoolDeposit,
 		LiquidityPoolDepositOp: &xdr.LiquidityPoolDepositOp{
 			LiquidityPoolId: id,
-			MaxAmountA: xdr.Int64(100_0000000),
-			MaxAmountB: xdr.Int64(50_0000000),
-			MinPrice: xdr.Price{N: xdr.Int32(1), D: xdr.Int32(1)},
-			MaxPrice: xdr.Price{N: xdr.Int32(2), D: xdr.Int32(1)},
+			MaxAmountA:      xdr.Int64(100_0000000),
+			MaxAmountB:      xdr.Int64(50_0000000),
+			MinPrice:        xdr.Price{N: xdr.Int32(1), D: xdr.Int32(1)},
+			MaxPrice:        xdr.Price{N: xdr.Int32(2), D: xdr.Int32(1)},
 		},
 	}}
 }
@@ -138,9 +138,9 @@ func liquidityPoolWithdrawOp(t *testing.T) xdr.Operation {
 		Type: xdr.OperationTypeLiquidityPoolWithdraw,
 		LiquidityPoolWithdrawOp: &xdr.LiquidityPoolWithdrawOp{
 			LiquidityPoolId: id,
-			Amount: xdr.Int64(1000),
-			MinAmountA: xdr.Int64(100_000000),
-			MinAmountB: xdr.Int64(50_000000),
+			Amount:          xdr.Int64(1000),
+			MinAmountA:      xdr.Int64(100_000000),
+			MinAmountB:      xdr.Int64(50_000000),
 		},
 	}}
 }
@@ -182,7 +182,7 @@ func extendFootprintTtlOp(t *testing.T) xdr.Operation {
 func restoreFootprintOp(t *testing.T) xdr.Operation {
 	t.Helper()
 	return xdr.Operation{Body: xdr.OperationBody{
-		Type: xdr.OperationTypeRestoreFootprint,
+		Type:               xdr.OperationTypeRestoreFootprint,
 		RestoreFootprintOp: &xdr.RestoreFootprintOp{},
 	}}
 }
@@ -218,7 +218,7 @@ func manageSellOfferOp(t *testing.T) xdr.Operation {
 	return xdr.Operation{Body: xdr.OperationBody{
 		Type: xdr.OperationTypeManageSellOffer,
 		ManageSellOfferOp: &xdr.ManageSellOfferOp{
-			Selling: creditAsset(t, "USDC"),
+			Selling: creditAsset(t, "EURC"),
 			Buying:  xdr.Asset{Type: xdr.AssetTypeAssetTypeNative},
 			Amount:  xdr.Int64(100_0000000),
 			Price:   xdr.Price{N: xdr.Int32(1), D: xdr.Int32(1)},
@@ -243,9 +243,10 @@ func allowTrustOp(t *testing.T) xdr.Operation {
 	asset := creditAsset(t, "USDC")
 	var assetCode xdr.AssetCode
 	assetCode.Type = asset.Type
-	if asset.Type == xdr.AssetTypeAssetTypeCreditAlphanum4 {
+	switch asset.Type {
+	case xdr.AssetTypeAssetTypeCreditAlphanum4:
 		assetCode.AssetCode4 = &asset.AlphaNum4.AssetCode
-	} else if asset.Type == xdr.AssetTypeAssetTypeCreditAlphanum12 {
+	case xdr.AssetTypeAssetTypeCreditAlphanum12:
 		assetCode.AssetCode12 = &asset.AlphaNum12.AssetCode
 	}
 	return xdr.Operation{Body: xdr.OperationBody{
@@ -300,11 +301,11 @@ func manageBuyOfferOp(t *testing.T) xdr.Operation {
 	return xdr.Operation{Body: xdr.OperationBody{
 		Type: xdr.OperationTypeManageBuyOffer,
 		ManageBuyOfferOp: &xdr.ManageBuyOfferOp{
-			Selling:    xdr.Asset{Type: xdr.AssetTypeAssetTypeNative},
-			Buying:     creditAsset(t, "USDC"),
-			BuyAmount:  xdr.Int64(100_0000000),
-			Price:      xdr.Price{N: xdr.Int32(1), D: xdr.Int32(1)},
-			OfferId:    0,
+			Selling:   xdr.Asset{Type: xdr.AssetTypeAssetTypeNative},
+			Buying:    creditAsset(t, "USDC"),
+			BuyAmount: xdr.Int64(100_0000000),
+			Price:     xdr.Price{N: xdr.Int32(1), D: xdr.Int32(1)},
+			OfferId:   0,
 		},
 	}}
 }
@@ -342,8 +343,8 @@ func createClaimableBalanceOp(t *testing.T) xdr.Operation {
 	return xdr.Operation{Body: xdr.OperationBody{
 		Type: xdr.OperationTypeCreateClaimableBalance,
 		CreateClaimableBalanceOp: &xdr.CreateClaimableBalanceOp{
-			Asset:   creditAsset(t, "USDC"),
-			Amount:  xdr.Int64(100_0000000),
+			Asset:     creditAsset(t, "USDC"),
+			Amount:    xdr.Int64(100_0000000),
 			Claimants: []xdr.Claimant{unconditionalClaimant(t, testDest)},
 		},
 	}}

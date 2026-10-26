@@ -793,9 +793,9 @@ func TestPrettyOperationTypeFormatting(t *testing.T) {
 	t.Parallel()
 
 	ops := []struct {
-		name  string
-		op    xdr.Operation
-		want  string
+		name string
+		op   xdr.Operation
+		want string
 	}{
 		{"payment", paymentOp(t, 100), "payment"},
 		{"createAccount", createAccountOp(t), "create_account"},

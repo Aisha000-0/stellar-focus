@@ -389,11 +389,12 @@ func formatScValNode(n *lens.Node, indent int) string {
 			formatted = "map"
 		}
 	case "ScValTypeScvAddress":
-		if addressAccountID != "" {
+		switch {
+		case addressAccountID != "":
 			formatted = fmt.Sprintf("addr(%s)", addressAccountID)
-		} else if val != nil {
+		case val != nil:
 			formatted = fmt.Sprintf("addr(%v)", val)
-		} else {
+		default:
 			formatted = "addr"
 		}
 	default:
