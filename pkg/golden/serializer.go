@@ -96,6 +96,7 @@ func (f Format) DefaultSuffix() string {
 // working from a path alone. An unrecognised extension is read as JSON, which
 // is what every fixture written before these formats existed is.
 func FormatForPath(path string) Format {
+	path = strings.TrimSuffix(path, GzipSuffix)
 	switch strings.ToLower(filepath.Ext(path)) {
 	case ".yaml", ".yml":
 		return YAML

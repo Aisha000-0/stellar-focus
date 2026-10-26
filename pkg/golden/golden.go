@@ -12,6 +12,11 @@
 //	go test ./... -focus.update
 //
 // The flag is namespaced so it never collides with a project's own -update.
+//
+// Fixtures may be stored gzip-compressed (a .golden.json.gz suffix writes
+// them that way), and reads are transparent about it; content is compared
+// after line-ending normalization, so a checkout on Windows asserts the same
+// as one on Linux.
 package golden
 
 import (
@@ -224,6 +229,13 @@ func (g *Golden) compare(tb focus.TB, name string, actual focus.Value) bool {
 	}
 
 	want, err := LoadAs(path, g.format)
+	if errors.Is(err, os.ErrNotExist) {
+		// A compressed twin counts: a repository that gzipped its fixtures
+		// should not have to reconfigure every assertion to keep passing.
+		if gz, gzErr := LoadAs(path+GzipSuffix, g.format); gzErr == nil {
+			path, want, err = path+GzipSuffix, gz, nil
+		}
+	}
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			tb.Errorf("golden: %s does not exist yet.\n"+
@@ -424,7 +436,23 @@ func RefreshedDecoded(f *Fixture) (json.RawMessage, error) {
 // unrecognised extension is read as JSON, which is what every fixture written
 // before the other formats existed is.
 func Load(path string) (*Fixture, error) {
-	return LoadAs(path, FormatForPath(path))
+	raw, err := ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	format := FormatForPath(path)
+	if bytes.HasPrefix(bytes.TrimSpace(raw), []byte("{")) {
+		format = JSON
+	}
+	serializer, err := SerializerFor(format)
+	if err != nil {
+		return nil, err
+	}
+	f, err := serializer.Unmarshal(raw)
+	if err != nil {
+		return nil, fmt.Errorf("parsing %s: %w", path, err)
+	}
+	return f, nil
 }
 
 // LoadAs reads a golden file in an explicit format.
@@ -436,7 +464,7 @@ func LoadAs(path string, format Format) (*Fixture, error) {
 		return nil, err
 	}
 
-	raw, err := os.ReadFile(path)
+	raw, err := ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
@@ -467,14 +495,7 @@ func SaveAs(path string, f *Fixture, format Format) error {
 	if err != nil {
 		return err
 	}
-
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return fmt.Errorf("creating %s: %w", filepath.Dir(path), err)
-	}
-	if err := os.WriteFile(path, data, 0o600); err != nil {
-		return fmt.Errorf("writing %s: %w", path, err)
-	}
-	return nil
+	return WriteFile(path, data)
 }
 
 // KnownPassphrases maps the network names a capture records to the
