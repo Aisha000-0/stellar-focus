@@ -2,6 +2,7 @@
 package focus
 
 import (
+	"encoding/hex"
 	"fmt"
 	"sort"
 	"strings"
@@ -113,7 +114,7 @@ func formatNode(n *lens.Node, indent int, isRoot bool, rootType string) string {
 		}
 		b.WriteString(prefix + "]")
 	case lens.KindScalar:
-		val := formatScalar(n.Name, n.Value, n.Note, rootType)
+		val := formatScalar(n.Name, n.Value)
 		if n.Name != "" {
 			fmt.Fprintf(&b, "%s%s: %s", prefix, n.Name, val)
 		} else {
@@ -213,8 +214,7 @@ func formatLiquidityPoolTypeNode(n *lens.Node, indent int) string {
 
 	// Convert long type names to short ones
 	shortType := poolType
-	switch poolType {
-	case "LiquidityPoolTypeLiquidityPoolConstantProduct":
+	if poolType == "LiquidityPoolTypeLiquidityPoolConstantProduct" {
 		shortType = "constantProduct"
 	}
 
@@ -464,11 +464,12 @@ func formatAssetNode(n *lens.Node, indent int) string {
 	case "AssetTypeAssetTypeNative":
 		formatted = "native"
 	case "AssetTypeAssetTypeCreditAlphanum4", "AssetTypeAssetTypeCreditAlphanum12":
-		if code != "" && issuer != "" {
+		switch {
+		case code != "" && issuer != "":
 			formatted = fmt.Sprintf("%s:%s", code, issuer)
-		} else if code != "" {
+		case code != "":
 			formatted = code
-		} else {
+		default:
 			formatted = assetType
 		}
 	default:
@@ -585,8 +586,8 @@ func isKeyField(name string) bool {
 	return keyFields[name]
 }
 
-// formatScalar formats a scalar value with enrichment from the note.
-func formatScalar(name string, val any, note string, rootType string) string {
+// formatScalar formats a scalar value.
+func formatScalar(name string, val any) string {
 	if val == nil {
 		return "(nil)"
 	}
@@ -728,8 +729,7 @@ func formatResultCodeLowerCamel(code string) string {
 
 // formatLiquidityPoolType converts long pool type names to short form.
 func formatLiquidityPoolType(poolType string) string {
-	switch poolType {
-	case "LiquidityPoolTypeLiquidityPoolConstantProduct":
+	if poolType == "LiquidityPoolTypeLiquidityPoolConstantProduct" {
 		return "constantProduct"
 	}
 	return poolType
@@ -739,15 +739,11 @@ func formatLiquidityPoolType(poolType string) string {
 func formatDataValue(hexStr string) string {
 	// Try to decode hex first
 	if isHex(hexStr) && len(hexStr)%2 == 0 {
-		bytes := make([]byte, len(hexStr)/2)
-		for i := 0; i < len(hexStr); i += 2 {
-			var b byte
-			fmt.Sscanf(hexStr[i:i+2], "%02x", &b)
-			bytes[i/2] = b
-		}
-		str := string(bytes)
-		if isPrintable(str) {
-			return fmt.Sprintf("%q", str)
+		if bytes, err := hex.DecodeString(hexStr); err == nil {
+			str := string(bytes)
+			if isPrintable(str) {
+				return fmt.Sprintf("%q", str)
+			}
 		}
 	}
 	// If not valid hex or decoded bytes not printable, return as-is (quoted if short)
@@ -782,17 +778,6 @@ func toLowerCamelCase(s string) string {
 	return strings.Join(parts, "")
 }
 
-// toCamelCase converts snake_case to CamelCase (first letter uppercase).
-func toCamelCase(s string) string {
-	parts := strings.Split(s, "_")
-	for i := range parts {
-		if len(parts[i]) > 0 {
-			parts[i] = strings.ToUpper(parts[i][:1]) + parts[i][1:]
-		}
-	}
-	return strings.Join(parts, "")
-}
-
 // toSnakeCase converts camelCase to snake_case.
 func toSnakeCase(s string) string {
 	var result strings.Builder
@@ -812,7 +797,7 @@ func toSnakeCase(s string) string {
 // isHex checks if a string is valid hexadecimal.
 func isHex(s string) bool {
 	for _, c := range s {
-		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
+		if (c < '0' || c > '9') && (c < 'a' || c > 'f') && (c < 'A' || c > 'F') {
 			return false
 		}
 	}

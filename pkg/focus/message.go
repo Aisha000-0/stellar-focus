@@ -24,15 +24,38 @@ import (
 const maxInlineXDR = 24
 
 // diffMessage renders the failure text for a structural mismatch.
-func diffMessage(assertion string, want, got *lens.Value, changes []lens.Change, applied []string, c *config) string {
+func diffMessage(
+	assertion string,
+	want, got *lens.Value,
+	changes []lens.Change,
+	applied []string,
+	c *config,
+	sorts sortResult,
+) string {
 	var b strings.Builder
 
 	// Headline: the count is the first thing that tells you how bad it is.
+	// The label goes beside the assertion name so a failure in a loop or a
+	// multi-step flow names the step it came from.
 	fmt.Fprintf(&b, "%s: %s differ — %s\n",
-		assertion, describeType(want, got), pluralChanges(len(changes)))
+		c.assertionName(assertion), describeType(want, got), pluralChanges(len(changes)))
 
 	if len(applied) > 0 {
 		fmt.Fprintf(&b, "(ignored: %s)\n", strings.Join(applied, ", "))
+	}
+
+	// An array that was compared as a set is named, so a reader can tell
+	// the difference between "these differ" and "these differ, and the order
+	// was not part of the comparison".
+	if len(sorts.unordered) > 0 {
+		fmt.Fprintf(&b, "(compared as unordered sets: %s)\n", strings.Join(sorts.unordered, ", "))
+	}
+
+	// A sort rule that matched nothing is reported here too: on a failing
+	// comparison it would otherwise be invisible.
+	if len(sorts.stale) > 0 {
+		fmt.Fprintf(&b, "(stale sort patterns, matched no array: %s)\n",
+			strings.Join(sorts.stale, ", "))
 	}
 
 	b.WriteString("\n")
@@ -136,8 +159,12 @@ func changePath(ch lens.Change) string {
 }
 
 // mismatchMessage renders a simple want/got failure for scalar assertions.
-func mismatchMessage(assertion, field string, want, got any) string {
-	return fmt.Sprintf("%s: %s is %s, want %s", assertion, field, render(got), render(want))
+//
+// A config may be passed to render the assertion's label. The variadic form
+// keeps the helper usable from the scalar assertions that do not take
+// options themselves.
+func mismatchMessage(assertion, field string, want, got any, c *config) string {
+	return fmt.Sprintf("%s: %s is %s, want %s", c.assertionName(assertion), field, render(got), render(want))
 }
 
 // render formats a scalar for a failure message, quoting strings so an empty
@@ -219,7 +246,7 @@ func base64Encode(b []byte) string {
 
 // indent prefixes every line, so a multi-line diff nests cleanly under the
 // go test file:line prefix instead of running back to column zero.
-func indent(s, prefix string) string {
+func indent(s string) string {
 	if s == "" {
 		return s
 	}
@@ -228,7 +255,7 @@ func indent(s, prefix string) string {
 		if l == "" {
 			continue
 		}
-		lines[i] = prefix + l
+		lines[i] = "  " + l
 	}
 	return strings.Join(lines, "\n")
 }
