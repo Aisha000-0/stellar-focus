@@ -67,7 +67,7 @@ func authInvocation(
 }
 
 // createContractArgs is the payload a create_contract host function carries.
-func createContractArgs(t *testing.T, constructorArgs ...xdr.ScVal) xdr.CreateContractArgs {
+func createContractArgs(t *testing.T) xdr.CreateContractArgs {
 	t.Helper()
 
 	var hash xdr.Hash
@@ -886,8 +886,8 @@ func TestRequireContractAuthValidMirror(t *testing.T) {
 	t.Parallel()
 
 	alpha := constructorContractID(t, 0x10)
-	valid := envelopeValue(t, authOperation(invokeHostFunction(t, alpha, "transfer"),
-		[]xdr.SorobanAuthorizationEntry{sourceAuthEntry(t, alpha, "transfer")}))
+	valid := envelopeValue(t, authOperation(invokeHostFunction(t, alpha, "approve"),
+		[]xdr.SorobanAuthorizationEntry{sourceAuthEntry(t, alpha, "approve")}))
 	classic := envelopeValue(t, paymentOp(t, 100))
 
 	t.Run("silent on success", func(t *testing.T) {
